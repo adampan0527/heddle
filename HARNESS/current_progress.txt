@@ -49,12 +49,24 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 - (`deferred`) → "Deferred"
 - (`no_op`) → "No-op"
 
+### SESSION 1 — 2026-09-12
+
+**Worked on:** feat-003 — Monorepo skeleton (pnpm workspaces + setuptools umbrella + packages/{web,cli,daemon})
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-003 (1 / 56 total)
+
+**Notes:** pnpm install OK (68 packages), pip install -e . OK, heddle --version returns 0.0.1, pnpm --filter web dev starts Vite on 127.0.0.1:5173 with HTTP 200. Both heddle_cli and heddle_daemon importable. TypeScript typecheck clean. Initialized git repo at heddle root with DESIGN.md, TECH.md, feature_list.json, HARNESS/ as the first commit.
+
+---
+
 SUMMARY
 -------
-Total features: 2
-Passing: 0
-Failing: 2
+Total features: 56
+Passing: 1
+Failing: 55
 In progress: 0
-Blocked: 0
+Blocked: 1
 Deferred: 1
-Last updated: 2026-07-24
+Last updated: 2026-09-12

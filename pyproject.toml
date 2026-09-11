@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "heddle"
+version = "0.0.1"
+description = "Self-hostable web-based control plane for long-running coding agents"
+requires-python = ">=3.11"
+authors = [{name = "heddle contributors"}]
+license = {text = "Apache-2.0"}
+dependencies = [
+    "click>=8.0",
+]
+
+[project.scripts]
+heddle = "heddle_cli.__main__:cli"
+
+[tool.setuptools.packages.find]
+where = ["packages/cli", "packages/daemon"]
+include = ["heddle_cli*", "heddle_daemon*"]
+exclude = ["tests*"]

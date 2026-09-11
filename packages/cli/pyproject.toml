@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "heddle-cli"
+version = "0.0.1"
+description = "heddle CLI — start/dev/test/lint subcommands (standalone installable; root pyproject.toml also installs this)"
+requires-python = ">=3.11"
+authors = [{name = "heddle contributors"}]
+license = {text = "Apache-2.0"}
+dependencies = [
+    "click>=8.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["heddle_cli*"]
+exclude = ["tests*"]

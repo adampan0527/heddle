@@ -53,7 +53,16 @@
         "Run `pnpm install` and `pip install -e .` from repo root, both succeed with zero errors",
         "Run `pnpm --filter web dev` and verify Vite dev server starts on 5173"
       ],
-      "status": "pending",
+      "status": "passing",
+      "attempts": [
+        {
+          "session": 1,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "monorepo skeleton built: pnpm-workspace.yaml, root pyproject.toml (setuptools umbrella), packages/web (React+Vite+TS), packages/cli (click), packages/daemon (langgraph+langchain-core). `pnpm install` OK (68 packages); `pip install -e .` OK; `heddle --version` returns 0.0.1; `pnpm --filter web dev` starts Vite on 127.0.0.1:5173 with HTTP 200. Both heddle_cli and heddle_daemon importable. Typecheck clean.",
+          "at": "2026-09-12"
+        }
+      ],
       "priority": "high",
       "depends_on": [],
       "attempts": []
@@ -940,11 +949,11 @@
   ],
   "metadata": {
     "total_features": 56,
-    "passing": 0,
-    "failing": 56,
+    "passing": 1,
+    "failing": 55,
     "in_progress": 0,
     "blocked": 1,
     "deferred": 1,
-    "last_updated": "2026-09-11"
+    "last_updated": "2026-09-12"
   }
 }

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "heddle-daemon"
+version = "0.0.1"
+description = "heddle-daemon — Python asyncio + LangGraph workflow engine (standalone installable; root pyproject.toml also installs this)"
+requires-python = ">=3.11"
+authors = [{name = "heddle contributors"}]
+license = {text = "Apache-2.0"}
+dependencies = [
+    "langgraph>=0.2",
+    "langchain-core>=0.3",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["heddle_daemon*"]
+exclude = ["tests*"]
