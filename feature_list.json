@@ -1,0 +1,950 @@
+{
+  "project_name": "heddle web",
+  "description": "Self-hostable web-based control plane for running long-running, multi-session coding agents on a project, with a DAG-aware kanban board as the primary interface. v0.1 is the first public release: monorepo with browser frontend (React + Vite + Tailwind), Node.js backend (Fastify + WS), and Python daemon (asyncio + LangGraph); loopback-only single-user single-project; one of four LLM providers (anthropic/openai/bedrock/ollama) selected by the user; persistent bottom dialog drives intent classification and auto-decomposition; drag-to-start execution model; manual mode only (no auto-mode toggle).",
+  "features": [
+    {
+      "id": "feat-001",
+      "category": "functional",
+      "description": "Example feature description (placeholder preserved from HARNESS template init)",
+      "steps": [
+        "Step 1: Navigate to the main interface",
+        "Step 2: Perform the action",
+        "Step 3: Verify the expected result"
+      ],
+      "status": "deferred",
+      "priority": "high",
+      "depends_on": [],
+      "attempts": [],
+      "deferred_until": "2026-08-23"
+    },
+    {
+      "id": "feat-002",
+      "category": "functional",
+      "description": "Second example feature — steps must be real, verifiable actions (placeholder preserved from HARNESS template init).",
+      "steps": [
+        "Open the example page in a browser",
+        "Confirm the page renders without console errors",
+        "Verify the documented UI element is visible"
+      ],
+      "status": "blocked",
+      "priority": "medium",
+      "depends_on": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "blocked",
+          "note": "baseline was pending; earlier verify command accidentally flipped it to in_progress; next session should reset to pending if no work was actually started",
+          "at": "2026-07-30"
+        }
+      ],
+      "blocked_reason": "baseline was pending; earlier verify command accidentally flipped it to in_progress; next session should reset to pending if no work was actually started"
+    },
+    {
+      "id": "feat-003",
+      "category": "functional",
+      "description": "Monorepo skeleton with pnpm workspaces for JS packages and a single Python package; root pyproject.toml + pnpm-workspace.yaml; packages/{web,daemon,cli} directories with package.json or pyproject.toml each",
+      "steps": [
+        "Create pnpm-workspace.yaml at repo root listing packages/*",
+        "Create root pyproject.toml that includes the daemon package via pip workspace",
+        "Create packages/web/package.json (React+Vite+TypeScript scaffold; no implementation yet)",
+        "Create packages/daemon/pyproject.toml (Python 3.11+, asyncio, langgraph, langchain-core)",
+        "Create packages/cli/pyproject.toml (click/typer console-script entry point)",
+        "Run `pnpm install` and `pip install -e .` from repo root, both succeed with zero errors",
+        "Run `pnpm --filter web dev` and verify Vite dev server starts on 5173"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": [],
+      "attempts": []
+    },
+    {
+      "id": "feat-004",
+      "category": "functional",
+      "description": "Apache 2.0 LICENSE file at repo root + SPDX-License-Identifier: Apache-2.0 header in every source file (.py, .ts, .tsx); license confirmation in README",
+      "steps": [
+        "Place LICENSE file (Apache 2.0 full text) at repo root",
+        "Add SPDX header to every Python file under packages/* and HARNESS/",
+        "Add SPDX header to every TypeScript file under packages/*",
+        "Add a License section to README.md pointing at LICENSE",
+        "Run a script that asserts every .py/.ts/.tsx file contains the SPDX header; script exits 0"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-003"],
+      "attempts": []
+    },
+    {
+      "id": "feat-005",
+      "category": "functional",
+      "description": "Structured JSON logging infrastructure shared between Node.js and Python: one line per event to stderr with ts/level/component/project_id/feature_id/event/msg; output filter strips api_key/secret/token from any field name",
+      "steps": [
+        "Implement packages/cli/heddle/logging.py: JSON-line emitter with the documented schema; one event per write to stderr",
+        "Implement packages/web/src/lib/logger.ts: equivalent JSON-line emitter for Node.js",
+        "Add a filter step in both that strips any field whose name contains api_key/secret/token",
+        "Unit test: emit a sample event with {api_key: 'xxx'} in payload; assert the serialized line does not contain 'xxx'",
+        "Unit test: emit 100 events in rapid succession; assert each is on its own line and parseable as JSON"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-003"],
+      "attempts": []
+    },
+    {
+      "id": "feat-006",
+      "category": "functional",
+      "description": "GitHub Actions CI workflow at .github/workflows/ci.yml: triggers on PR and push to main; runs install/build/unit/integration under HEDDLE_FAKE_LLM=1; live-LLM E2E tests run on nightly schedule behind a repo secret",
+      "steps": [
+        "Create .github/workflows/ci.yml with on: pull_request and on: push to main",
+        "Configure job matrix on ubuntu-latest, macos-latest, windows-latest",
+        "Each job: checkout → setup-node 20 → setup-python 3.11 → pnpm install → pip install -e . → pnpm --filter web build → pnpm test → pytest",
+        "All test commands run with HEDDLE_FAKE_LLM=1 in env",
+        "Separate workflow at .github/workflows/nightly.yml with cron schedule, gated on LIVE_LLM_TESTS secret, calls the same test commands without HEDDLE_FAKE_LLM",
+        "Configure pnpm cache (lockfile-keyed) and pip cache in both workflows"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-003", "feat-007"],
+      "attempts": []
+    },
+    {
+      "id": "feat-007",
+      "category": "functional",
+      "description": "HEDDLE_FAKE_LLM test fixture: when env var is set, all LLM calls in the daemon return scripted responses from a test fixture file instead of calling real providers; enables CI without API keys or network",
+      "steps": [
+        "Define fixture file format: JSON-lines mapping tool-call sequences to scripted LLM responses",
+        "Implement fixtures/ directory under packages/daemon/tests/ with a sample fixture covering a 3-step agent run",
+        "Implement fixture loader that reads the file once at daemon startup under HEDDLE_FAKE_LLM=1",
+        "Modify the agent runtime to short-circuit real LLM calls and emit the scripted responses when HEDDLE_FAKE_LLM=1",
+        "Integration test: run a sample feature end-to-end with HEDDLE_FAKE_LLM=1 and assert it reaches the expected terminal state"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-003"],
+      "attempts": []
+    },
+    {
+      "id": "feat-008",
+      "category": "functional",
+      "description": "feature_list_io library extraction: shared Python module that wraps HARNESS/tools/feature_list.py mutation logic; both the CLI script and the daemon use this library so there is one source of truth for feature_list.json I/O",
+      "steps": [
+        "Create heddle_common/ package with feature_list_io.py: load(), save(), add(), mark_in_progress(), mark_passing(), mark_blocked(), mark_deferred(), update_metadata()",
+        "Refactor HARNESS/tools/feature_list.py to import from heddle_common and delegate the mutation logic",
+        "Refactor HARNESS/tools/_feature_state.py to also delegate to heddle_common",
+        "Run HARNESS/tools/feature_list.py status before and after the refactor; output is byte-identical",
+        "Run handoff_check.py before and after; output shows zero new warnings/errors",
+        "Run a round-trip test: load() then save() the same JSON; bytes are identical"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-003"],
+      "attempts": []
+    },
+    {
+      "id": "feat-009",
+      "category": "functional",
+      "description": "schema_version field in feature_list.json root: integer, initial value 1; loaded with default 0 if absent; written always with current version; new daemon refuses files with schema_version > current_max with clear error",
+      "steps": [
+        "Add schema_version: int field to feature_list_io.load() result and to save() output",
+        "Add a SCHEMA_VERSION constant (= 1) in heddle_common/",
+        "Add SCHEMA_VERSION_MAX = current_max constant (initially equal to SCHEMA_VERSION); bump on every breaking schema change",
+        "In load(): if schema_version > SCHEMA_VERSION_MAX, raise SchemaVersionError with message including both versions and instructions to upgrade",
+        "Update HARNESS/tools/feature_list.py to preserve schema_version on every read+write cycle",
+        "Test: load an old file without schema_version; assert loaded dict has schema_version=0 internally and 1 on disk after save",
+        "Test: load a file with schema_version=999; assert SchemaVersionError is raised with clear message"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-008"],
+      "attempts": []
+    },
+    {
+      "id": "feat-010",
+      "category": "functional",
+      "description": "Add kind/fixes/enhances/superseded_by/implementation_model optional fields to feature objects in feature_list.json; defaults kind=feature, all others null; new daemon recognizes them; old daemon ignores unknown fields without crashing",
+      "steps": [
+        "Add the five optional fields to the feature dict schema in feature_list_io",
+        "Defaults: kind=feature, fixes=null, enhances=null, superseded_by=null, implementation_model=null",
+        "save() always writes all five fields (even when null) so the on-disk schema is always complete",
+        "Validation in add() / update paths: if kind=bugfix then fixes is required and target must exist; if kind=enhancement then enhances is required and target must exist",
+        "Test: round-trip a feature with kind=bugfix, fixes=feat-001; both reads return the values",
+        "Test: old-format JSON without kind loads with kind defaulting to feature; new-format JSON loads with all fields preserved",
+        "Test: save() then load() yields byte-identical JSON (modulo schema_version)"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-009"],
+      "attempts": []
+    },
+    {
+      "id": "feat-011",
+      "category": "functional",
+      "description": "~/.heddle/configs.yaml file with pre-populated four LLM provider templates (anthropic-claude-sonnet, openai-gpt-4, bedrock-claude, ollama-llama); on first run, heddle creates the file with these defaults; user picks one, sets env var, ready",
+      "steps": [
+        "Define configs.yaml schema: list of named configs each with provider/model/base_url/api_key_env/api_key (api_key left blank)",
+        "Implement first-run UX: if ~/.heddle/configs.yaml does not exist, write the four default templates",
+        "Implement parser that loads configs.yaml into a dict keyed by name",
+        "Implement writer that updates a single config entry by name",
+        "CLI command `heddle configs list` prints the four templates with their filled values",
+        "Test: delete ~/.heddle/configs.yaml; run heddle; assert the file is recreated with the four defaults"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-008"],
+      "attempts": []
+    },
+    {
+      "id": "feat-012",
+      "category": "functional",
+      "description": "~/.heddle/projects.json registry: list of registered projects with id/name/path/added_at/last_accessed_at; v0.1 supports one project at a time (multi-project concurrent execution is post-v0.1)",
+      "steps": [
+        "Define projects.json schema with the documented fields",
+        "Implement loader/writer in heddle_common/",
+        "Implement add_project(path) that: validates path exists, computes id (uuid4), records added_at=now",
+        "Implement remove_project(id) that: stops execution (post-feat-014 daemon), deletes the project entry, cascades to log files (feat-015)",
+        "Test: add a project pointing at a real directory; assert projects.json has the entry",
+        "Test: remove a project; assert projects.json no longer has the entry and the log files are gone"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-008"],
+      "attempts": []
+    },
+    {
+      "id": "feat-013",
+      "category": "functional",
+      "description": "~/.heddle/.env fallback loader: heddle reads this file on startup and loads KEY=VALUE lines into the process environment; process env vars win; file is gitignored; loose permissions trigger a warning and refuse to start",
+      "steps": [
+        "Implement .env parser: read KEY=VALUE lines, ignore # comments, handle quoted values",
+        "On startup, after process env is established, parse ~/.heddle/.env and merge into os.environ (process env takes precedence)",
+        "Check file permissions: if mode has any group/other read bit set, log warning and exit with code 1",
+        "Generate ~/.heddle/.gitignore on first run that ignores .env",
+        "Heddle never writes to ~/.heddle/.env (asserted by a comment in the loader module)",
+        "Test: create .env with TEST_VAR=test_value; start a subprocess that reads TEST_VAR; assert the value is test_value",
+        "Test: chmod 644 on .env; assert heddle exits with warning and non-zero code"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-008"],
+      "attempts": []
+    },
+    {
+      "id": "feat-014",
+      "category": "functional",
+      "description": "Project removal cascade: when remove_project(id) is called, the Node.js layer deletes ~/.heddle/logs/<project_id>.log and ~/.heddle/logs/<project_id>/ directory; no retain option in v0.1",
+      "steps": [
+        "Wire feat-012 remove_project() to also delete the per-project log directory",
+        "Before deletion, ensure the daemon is no longer writing to those files (stop any in-flight features for that project)",
+        "Test: register a project, run a fake log write to its log file, remove the project, assert the log file is gone",
+        "Test: remove a project with an in_progress feature; assert the feature is aborted and the log files are deleted"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-012", "feat-018"],
+      "attempts": []
+    },
+    {
+      "id": "feat-015",
+      "category": "functional",
+      "description": "Log file rotation: 50 MB per file with 5 generations retained; configurable via HEDDLE_LOG_MAX_BYTES and HEDDLE_LOG_BACKUP_COUNT env vars; daemon side uses RotatingFileHandler; Node.js side hand-rolled equivalent",
+      "steps": [
+        "Daemon side: configure logging.handlers.RotatingFileHandler with maxBytes=HEDDLE_LOG_MAX_BYTES (default 50MB) and backupCount=HEDDLE_LOG_BACKUP_COUNT (default 5)",
+        "Node.js side: implement ~30 lines that watches file size and renames file to .1, .2, etc. on rotation",
+        "Test: write 100 MB of logs to a single project; assert the file rolls over and the oldest generation is deleted",
+        "Test: set HEDDLE_LOG_MAX_BYTES=1048576; write 5 MB; assert 5 backup files exist"
+      ],
+      "status": "pending",
+      "priority": "medium",
+      "depends_on": ["feat-005"],
+      "attempts": []
+    },
+    {
+      "id": "feat-016",
+      "category": "functional",
+      "description": "Backward-compat tests for feature_list_io: ensure HARNESS-format JSON (without schema_version, kind, fixes, enhances, superseded_by, implementation_model) loads cleanly and saves with the new schema",
+      "steps": [
+        "Create tests/fixtures/old-harness-format.json with a feature_list.json from before any v0.1 changes",
+        "Test: load it via feature_list_io; assert all features are readable with kind defaulting to feature",
+        "Test: save it back; assert the saved file has schema_version=1 and all new optional fields written",
+        "Test: feed it through the HARNESS tools/feature_list.py status command; assert it reports correct metadata counts"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-009", "feat-010"],
+      "attempts": []
+    },
+    {
+      "id": "feat-017",
+      "category": "functional",
+      "description": "Python daemon skeleton: asyncio process with a websockets server bound to loopback; exposes a single /ws endpoint that accepts JSON-envelope messages; emits structured JSON logs to stderr; hard-fails on port conflict",
+      "steps": [
+        "Create packages/daemon/heddle/daemon/server.py with an asyncio entry point that starts a websockets server on HEDDLE_DAEMON_PORT (default 8765) bound to 127.0.0.1",
+        "Implement the JSON envelope parser/serializer (T-010): every message is {v: 1, type: ..., ...}",
+        "On startup, attempt to bind the port; if OSError EADDRINUSE, log a clear error message and exit with code 1",
+        "On startup, refuse to bind any non-loopback address with a clear error and exit code 1",
+        "Test: start daemon; connect a websocket client from 127.0.0.1; assert handshake succeeds",
+        "Test: start daemon on port 8765 twice; second instance exits with port-conflict error"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-005", "feat-008"],
+      "attempts": []
+    },
+    {
+      "id": "feat-018",
+      "category": "functional",
+      "description": "LangGraph checkpointer with SQLite: per-project .heddle/checkpoints.db file in the user's selected project directory; LangGraph threads auto-persist; restoring a thread resumes from the last checkpoint",
+      "steps": [
+        "Configure LangGraph SqliteSaver with checkpoint_db path = <project_path>/.heddle/checkpoints.db",
+        "On daemon startup for a project, ensure .heddle/ exists; create checkpoints.db if not present",
+        "Implement thread lifecycle: each feature_id maps to one LangGraph thread_id; on resume, the thread loads its last checkpoint and continues",
+        "Test: start a feature, interrupt it at step 3 (kill daemon), restart daemon, resume feature; assert it continues from step 3 not step 1",
+        "Test: simulate a daemon crash mid-feature via SIGKILL; restart; assert the feature is still recoverable"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-017"],
+      "attempts": []
+    },
+    {
+      "id": "feat-019",
+      "category": "functional",
+      "description": "Self-written agent runtime (D-053): an LLM <-> tools loop in heddle/daemon/agent_runtime.py that calls LLM, parses tool calls, executes tools, appends results, loops until LLM signals done; NOT using LangChain's prebuilt agent executor",
+      "steps": [
+        "Create agent_runtime.py with an async run_agent_step(thread_id, message) function",
+        "Inside run_agent_step: load thread state from checkpointer, build messages (system + history + new), call LLM, parse response (tool calls or final), execute tool calls via tool-dispatch middleware (feat-022), append results to messages, persist thread state, return",
+        "Loop until LLM response signals done (e.g., a stop_reason field) or max_steps reached",
+        "On recursion_limit (D-052): raise a structured error with cause=recursion_limit",
+        "Test: with HEDDLE_FAKE_LLM=1 and a fixture that has 2 tool calls then done; assert agent_runtime completes after 3 LLM invocations"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-018", "feat-021"],
+      "attempts": []
+    },
+    {
+      "id": "feat-020",
+      "category": "functional",
+      "description": "Six self-written tools (D-053) implementing the LangChain BaseTool interface: Read, Write, Edit, Bash, Glob, Grep; each with name + description + args_schema + _run(); no third-party tool libraries",
+      "steps": [
+        "Create heddle/daemon/tools/read.py: reads a file from the project directory, returns content (truncated at configurable size)",
+        "Create write.py: writes content to a file in the project directory",
+        "Create edit.py: applies a string-replace edit to a file (matches Claude Code's Edit semantics)",
+        "Create bash.py: runs a subprocess command in the project directory with a timeout",
+        "Create glob.py: returns matching paths via pathlib glob patterns",
+        "Create grep.py: returns matching lines via re patterns, with file filter",
+        "All tools: args_schema is a Pydantic model (or stdlib dataclass equivalent)",
+        "Test: each tool has a unit test covering happy path and one error path (file not found, etc.)"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-019"],
+      "attempts": []
+    },
+    {
+      "id": "feat-021",
+      "category": "functional",
+      "description": "Sandbox middleware (D-053): a tool-dispatch layer that runs before every tool call; enforces the sandbox level from .heddle/config.yaml (read-only / edit-with-confirm / full); rejects read-only tool calls with synthetic error result; pauses edit-with-confirm tool calls until user responds in the dialog",
+      "steps": [
+        "Define sandbox_level enum in .heddle/config.yaml (read-only / edit-with-confirm / full)",
+        "Implement tool_dispatch middleware that intercepts every tool call before execution",
+        "For read-only: reject Write/Edit/Bash with synthetic tool result explaining the sandbox is read-only; allow Read/Glob/Grep through",
+        "For edit-with-confirm: emit a WS confirm_request event with the proposed tool call; block until WS confirm_response arrives (with timeout)",
+        "For full: pass through without checks",
+        "Test: set sandbox_level=read-only; attempt Write; assert it returns sandbox-rejected synthetic result and no file is created"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-020"],
+      "attempts": []
+    },
+    {
+      "id": "feat-022",
+      "category": "functional",
+      "description": "recursion_limit guardrail (D-052) + daemon-internal LLM retry (D-041): LangGraph recursion_limit set to 200 at daemon startup (configurable via HEDDLE_RECURSION_LIMIT); on GraphRecursionError transition feature to red in_progress sub-state; LLM calls retry with exponential backoff 1s->2s->4s, max 3 attempts",
+      "steps": [
+        "Set LangGraph recursion_limit from HEDDLE_RECURSION_LIMIT env var (default 200) at daemon startup",
+        "On GraphRecursionError: surface to caller as a structured failure with cause=recursion_limit",
+        "Wrap LLM call in retry decorator with exponential backoff: 1s, 2s, 4s, max 3 attempts",
+        "On 3rd failure: surface to caller as a structured failure with cause=llm_retry_exhausted",
+        "Test: with HEDDLE_FAKE_LLM=1 and a fixture that loops forever; assert recursion_limit triggers at 200 steps and surfaces a structured failure",
+        "Test: with a mock LLM that fails twice then succeeds; assert 3 calls happened with correct delays"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-019"],
+      "attempts": []
+    },
+    {
+      "id": "feat-023",
+      "category": "functional",
+      "description": "Four LLM provider integrations via LangChain: anthropic (claude-sonnet-4-5), openai (gpt-4.x), bedrock (claude-on-bedrock), ollama (local llama3); resolved by configs.yaml named config; uses LangChain chat-model integrations, not prebuilt agent executor",
+      "steps": [
+        "Implement LLM factory in heddle/daemon/llm.py that takes a named config and returns a LangChain BaseChatModel instance",
+        "Four branches: provider=anthropic returns ChatAnthropic(model=...), provider=openai returns ChatOpenAI(model=...), provider=bedrock returns ChatBedrock(model=...), provider=ollama returns ChatOllama(model=...)",
+        "API key resolution per T-015/T-030: read api_key_env from config, look up in process env (with .env fallback)",
+        "On missing key: raise a structured error that the daemon surfaces to the user via WS event",
+        "Test: instantiate each of the four providers with a mocked env var; assert the right ChatModel subclass is returned"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-011", "feat-013"],
+      "attempts": []
+    },
+    {
+      "id": "feat-024",
+      "category": "functional",
+      "description": "Per-feature restart budget (D-051): 3 silent recoveries within any 10-minute sliding window; on budget exhaustion or checkpoint loss, feature transitions to blocked; counter persisted in feature_list.json attempts[]",
+      "steps": [
+        "On daemon crash recovery (post-feat-029 supervisor detects drop, respawns): increment restart counter for the affected feature, persist to attempts[]",
+        "Implement sliding window check: if 3 restarts within 10 minutes for the same feature, transition that feature to blocked",
+        "Implement checkpoint-loss detection: if checkpoints.db is missing/corrupt for a feature, transition to blocked",
+        "Test: simulate 3 daemon restarts within 10 minutes; assert the feature transitions to blocked with clear reason",
+        "Test: simulate 2 restarts in 10 minutes, then a 3rd after 11 minutes; assert the 3rd does NOT transition to blocked (window has cleared)"
+      ],
+      "status": "pending",
+      "priority": "medium",
+      "depends_on": ["feat-018", "feat-029"],
+      "attempts": []
+    },
+    {
+      "id": "feat-025",
+      "category": "functional",
+      "description": "Daemon-side logging with rotation: structured JSON lines to stderr per T-017; per-project log files at ~/.heddle/logs/<project_id>.log; LLM-call audit log at ~/.heddle/logs/<project_id>/llm-audit.jsonl",
+      "steps": [
+        "Implement JSON-line emitter per feat-005 in the daemon",
+        "On daemon startup for a project, ensure ~/.heddle/logs/<project_id>/ exists",
+        "Every agent_step invocation appends a line to llm-audit.jsonl with {feature_id, model, prompt_tokens, completion_tokens, latency_ms, outcome}",
+        "All log lines use feat-015 rotation",
+        "Test: run a fake agent step; assert a line was written to llm-audit.jsonl with the right shape"
+      ],
+      "status": "pending",
+      "priority": "medium",
+      "depends_on": ["feat-005", "feat-015"],
+      "attempts": []
+    },
+    {
+      "id": "feat-026",
+      "category": "functional",
+      "description": "Fastify skeleton with @fastify/websocket, @sinclair/typebox for schema validation, and TypeScript strict mode; bound to loopback only; serves HTTP REST API at /api/*; WebSocket at /ws",
+      "steps": [
+        "Create packages/cli/src/server.ts with Fastify instance configured for strict TypeScript",
+        "Register @fastify/websocket, @fastify/static, @sinclair/typebox type providers",
+        "Bind to 127.0.0.1 only; refuse non-loopback binding with a clear error and exit code 1",
+        "Define /api/projects, /api/features, /api/dialog route skeletons returning 501 Not Implemented",
+        "Test: start the server; curl http://127.0.0.1:5173/api/projects returns 501",
+        "Test: attempt to bind to 0.0.0.0; assert exit with clear error message"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-003", "feat-005"],
+      "attempts": []
+    },
+    {
+      "id": "feat-027",
+      "category": "functional",
+      "description": "Process supervision (T-011): Node.js spawns the Python daemon as a child process via child_process.spawn; on daemon WS disconnect, waits HEDDLE_DAEMON_RESTART_DELAY_MS (default 500ms) then re-spawns; WS health check is 5-second ping; 3 missed pings trigger respawn",
+      "steps": [
+        "Implement heddle/cli/src/supervisor.ts that spawns the daemon subprocess with stdio inherited and args from env vars",
+        "On WS disconnect from daemon: log structured event, wait 500ms, re-spawn",
+        "Implement WS ping/pong: every 5 seconds Node.js sends ping; daemon responds with pong; if 3 pings miss, kill daemon and respawn",
+        "On daemon process exit (clean or crash): log structured event with exit code",
+        "Test: start supervisor with a fake daemon that exits cleanly; assert supervisor respawns after delay",
+        "Test: simulate WS disconnect (kill daemon's WS server); assert supervisor respawns"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-017", "feat-026"],
+      "attempts": []
+    },
+    {
+      "id": "feat-028",
+      "category": "functional",
+      "description": "HTTP REST routes for projects (list/add/remove), features (list/get/transition), dialog (submit message); all with TypeBox schema validation; responses are JSON envelopes",
+      "steps": [
+        "GET /api/projects returns list of registered projects from projects.json",
+        "POST /api/projects accepts {path: string} and adds the project (validates path exists)",
+        "DELETE /api/projects/:id removes the project (cascades per feat-014)",
+        "GET /api/projects/:id/features returns feature list with status/depends_on/etc",
+        "POST /api/projects/:id/features/:fid/transition accepts {action: retry|abandon|mark-done}",
+        "POST /api/projects/:id/dialog accepts {message: string}; returns the dialog response (intent classification + draft cards or chat response)",
+        "All routes validate input via TypeBox schemas; invalid input returns 400 with validation errors",
+        "Test: each route has a Vitest test covering happy path and one validation failure"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-026", "feat-012"],
+      "attempts": []
+    },
+    {
+      "id": "feat-029",
+      "category": "functional",
+      "description": "Browser<->Node.js WebSocket event stream: client connects to /ws on the Node.js backend; server pushes project_id-tagged events (feature.status_changed, feature.attempt_started, feature.attempt_finished, etc.); client sends dialog messages and commands",
+      "steps": [
+        "Implement WS handler at /ws in the Fastify server using @fastify/websocket",
+        "Define event types: feature.status_changed, feature.attempt_started, feature.attempt_finished, feature.diagnosis, dag.topology_changed, daemon.health, daemon.crashed, project.dialog_response",
+        "Each event has {v: 1, type, project_id, payload}",
+        "Server-side: maintain a registry of connected clients; on daemon events from feat-030, broadcast to clients filtered by project_id",
+        "Test: simulate a feature status change; assert all connected clients receive the event within 100ms",
+        "Test: two clients connected, two projects; event for project A only reaches the client viewing project A"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-027", "feat-030"],
+      "attempts": []
+    },
+    {
+      "id": "feat-030",
+      "category": "functional",
+      "description": "Node.js <-> Daemon WebSocket protocol handler: Node.js connects to daemon WS at ws://127.0.0.1:8765; bidirectional message flow with JSON envelopes; commands (start_feature, stop_feature, retry_feature, dialog_turn) and events (feature_progress, feature_done, feature_failed, log_line)",
+      "steps": [
+        "Implement heddle/cli/src/daemon-client.ts that opens WS to the daemon at startup",
+        "Define command types sent Node.js -> daemon: start_feature, stop_feature, retry_feature, dialog_turn",
+        "Define event types sent daemon -> Node.js: feature_progress, feature_done, feature_failed, log_line, diagnosis",
+        "Forward daemon events to the Browser<->Node.js WS layer per feat-029",
+        "Test: send start_feature command; assert daemon begins execution and emits feature_progress events",
+        "Test: send stop_feature; assert daemon halts and emits feature_done with outcome=stopped"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-017", "feat-027"],
+      "attempts": []
+    },
+    {
+      "id": "feat-031",
+      "category": "functional",
+      "description": "LLM config resolution: when a feature is started, Node.js passes the feature's implementation_model (locked config name) to the daemon; daemon looks up the config in ~/.heddle/configs.yaml and instantiates the LLM via feat-023 factory",
+      "steps": [
+        "In feat-030 start_feature command: include implementation_model field",
+        "Daemon side: implement a get_llm(config_name) function that reads configs.yaml and returns a LangChain BaseChatModel instance",
+        "Use this LLM in agent_runtime per feat-019",
+        "Test: create a configs.yaml with a fake named config; call get_llm(name); assert it returns a valid chat model instance"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-011", "feat-023", "feat-030"],
+      "attempts": []
+    },
+    {
+      "id": "feat-032",
+      "category": "functional",
+      "description": "Vite + React + Tailwind v4 + TypeScript (strict mode) skeleton in packages/web; Zustand for UI state, TanStack Query for server state; one-page app (no router) with project switcher",
+      "steps": [
+        "Scaffold Vite project with React-TS template",
+        "Install Tailwind v4 + @tailwindcss/vite plugin; configure",
+        "Install zustand and @tanstack/react-query",
+        "Set up TypeScript strict mode (strict, noUncheckedIndexedAccess, exactOptionalPropertyTypes)",
+        "App.tsx renders a single <App /> with a project switcher and a placeholder for the kanban + dialog",
+        "Run `pnpm --filter web dev`; assert browser loads at http://localhost:5173"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-003"],
+      "attempts": []
+    },
+    {
+      "id": "feat-033",
+      "category": "functional",
+      "description": "WebSocket client with reconnect wrapper (T-027): native WebSocket API + ~30 lines of glue for state machine (connecting/open/reconnecting/closed), exponential backoff reconnect (1s->2s->4s->8s, cap 30s), event buffering during disconnect (cap 1000 events or 30s)",
+      "steps": [
+        "Implement packages/web/src/lib/ws-client.ts wrapping native WebSocket",
+        "Expose connect(), send(message), on(event, handler), close()",
+        "On disconnect: exponential backoff reconnect with cap",
+        "Buffer outgoing messages while disconnected (cap 1000 events or 30s, then drop oldest)",
+        "Emit state change events so UI can show connection status",
+        "Test: start server, connect client, kill server, restart server; assert client reconnects automatically and queued messages are sent"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-029", "feat-032"],
+      "attempts": []
+    },
+    {
+      "id": "feat-034",
+      "category": "ui",
+      "description": "Project switcher UI: dropdown in the header showing all registered projects; click switches the active project; on first run with no projects, show a folder picker to add the first project",
+      "steps": [
+        "Header component shows current project name + a dropdown of all projects",
+        "Clicking a project name in the dropdown calls /api/projects/:id/select (or equivalent) and reloads the kanban with that project's features",
+        "On first run with zero projects, render an empty state with a 'Pick a project folder' button",
+        "Clicking 'Pick a folder' invokes a native folder picker (Tauri/Electron-style dialog); on selection, POST /api/projects",
+        "Test: with two projects registered, switch between them; assert the kanban renders the correct features",
+        "Test: with zero projects, the empty state shows; clicking add-project triggers the folder picker"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-028", "feat-032"],
+      "attempts": []
+    },
+    {
+      "id": "feat-035",
+      "category": "ui",
+      "description": "Kanban board with @dnd-kit/core (T-007): three columns (in_progress / ready / blocked), responsive layout, drag-and-drop between columns with single-active model enforcement",
+      "steps": [
+        "Install @dnd-kit/core and @dnd-kit/sortable",
+        "Render the kanban with three columns side-by-side (in_progress / ready / blocked)",
+        "Each column lists feature cards sortable by drag",
+        "Drag a card from ready to in_progress: optimistically update UI, send POST /api/projects/:id/features/:fid/transition",
+        "Single-active model: if a card is already in in_progress, the new drag is rejected with a clear error toast",
+        "Drag a card from blocked to ready: rejected (blocked features are locked per D-016)",
+        "Test: drag a ready card to in_progress; assert the kanban shows it there and the API call succeeded"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-032"],
+      "attempts": []
+    },
+    {
+      "id": "feat-036",
+      "category": "ui",
+      "description": "Bottom-lane rendering (D-056): Done / Someday / Archive collapsible lanes below the main columns; Done default-expanded; Someday and Archive default-collapsed; lane headers always show counts",
+      "steps": [
+        "Render three collapsible lanes below the kanban main columns: Done (passing), Someday (deferred), Archive (superseded_by != null)",
+        "Done is default-expanded; Someday and Archive are default-collapsed",
+        "Lane headers always show counts (e.g., '▶ Someday (3)')",
+        "Hovering a collapsed-lane count previews the top 3 titles in a tooltip",
+        "Lane interactions are view-only: no drag in or out of lanes; no inline edit; modifications go through dialog commands",
+        "Test: render a project with 5 passing + 3 deferred + 2 superseded features; assert lane counts and default expansion states"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-035"],
+      "attempts": []
+    },
+    {
+      "id": "feat-037",
+      "category": "ui",
+      "description": "Card rendering with kind icon (D-024): bugfix cards get an orange left-edge stripe + wrench icon; feature cards get default styling; status-aware badges (in_progress / passing / blocked / deferred)",
+      "steps": [
+        "Card component renders title + description preview + status badge + kind icon (if bugfix)",
+        "Bugfix cards: orange left-edge stripe + wrench icon in top-right corner",
+        "Blocked cards: lock icon + the blocking dependency (@feat-XXX)",
+        "Deferred cards: clock icon + deferred_until date",
+        "Passing cards: checkmark + completion timestamp",
+        "Test: render cards of each kind and status; assert correct visual treatment per the design"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-035"],
+      "attempts": []
+    },
+    {
+      "id": "feat-038",
+      "category": "ui",
+      "description": "Persistent bottom dialog (D-014): always visible at the bottom of the board; user types natural-language commands or feature requests; sends to /api/dialog; displays streaming response",
+      "steps": [
+        "Render a textarea + send button at the bottom of the kanban, fixed position",
+        "On submit: POST /api/projects/:id/dialog with the user's message",
+        "Display the response (text or draft cards or chat reply) inline below the textarea",
+        "On chat reply (no cards generated): just show the text response",
+        "On draft cards: show a draft tray above the kanban with the cards (feat-040)",
+        "Test: type a feature request; assert the dialog response appears; click 'Confirm all' and assert cards become features"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-028", "feat-035"],
+      "attempts": []
+    },
+    {
+      "id": "feat-039",
+      "category": "ui",
+      "description": "@feat-XXX mention syntax with autocomplete dropdown (D-034): typing @ in the dialog opens a list of matching features by id / title / description; arrow keys to navigate, Enter to insert",
+      "steps": [
+        "When user types @ in the dialog textarea, show a popup with matching features",
+        "Filter as user types more characters (matched against id + title + description)",
+        "Show 6 candidates at a time with scrolling",
+        "Arrow keys to navigate, Enter to confirm (inserts '@feat-XXX '), Esc to dismiss",
+        "Test: type @fe in dialog; assert dropdown shows feat-001, feat-002 etc.; press Enter on feat-003; assert textarea now has '@feat-003 '"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-038"],
+      "attempts": []
+    },
+    {
+      "id": "feat-040",
+      "category": "ui",
+      "description": "Draft cards UI (D-013/D-044/D-045): draft tray appears above the kanban when dialog returns cards; cards have temp-XXX ids; user can keep/uncheck them; clicking 'Confirm all (N)' inserts them as feat-XXX",
+      "steps": [
+        "Draft tray renders above the kanban when /api/dialog returns draft cards",
+        "Each draft card shows title + description + checkbox (default unchecked = may be removed by next decomposition)",
+        "User types more in dialog: re-decomposition runs, drafts are rewritten (kept cards are preserved verbatim, others may change/disappear)",
+        "Click 'Confirm all (N)' button at the bottom of the tray; calls /api/confirm-drafts with the kept card ids; on success, tray clears",
+        "Test: type 'add OAuth login'; assert draft tray shows 1-3 cards; click 'Confirm all'; assert the kanban now has the new feature"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-038"],
+      "attempts": []
+    },
+    {
+      "id": "feat-041",
+      "category": "ui",
+      "description": "DAG view with reactflow (D-058): right-side slide-in panel with bidirectional sync to kanban; ego-network highlight on node click; pan/zoom + fit-to-screen; fullscreen on narrow viewports",
+      "steps": [
+        "Install @xyflow/react (reactflow v12)",
+        "Render DAG nodes (one per feature) and edges (depends_on) with status-based colors",
+        "Open DAG view: panel slides in from the right; kanban compresses to make room",
+        "Divider between kanban and DAG is draggable to resize",
+        "Click a kanban card: select matching DAG node, highlight ego-network (node + parents + children + edges), dim everything else",
+        "Click a DAG node: select matching kanban card, scroll to make it visible, apply ego-network highlight",
+        "On viewport < 1280px: DAG view promotes to fullscreen overlay (no side panel)",
+        "Test: open DAG view; click a blocked feature; assert its ancestors + descendants are highlighted"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-035"],
+      "attempts": []
+    },
+    {
+      "id": "feat-042",
+      "category": "ui",
+      "description": "Diagnosis structured report UI (D-035): when user invokes @feat-XXX diagnose, the LLM produces {cause, suggestion, diff?}; UI renders this as a card with three sections",
+      "steps": [
+        "When user types '@feat-XXX 分析 ...' in dialog, server returns a structured diagnosis",
+        "UI renders a diagnosis card with three sections: cause, suggestion, diff (if present)",
+        "If diff is present, show before/after side by side with an 'Apply' button",
+        "Apply button triggers retry-with-hint per feat-043",
+        "Test: invoke diagnose on a failed feature; assert the card renders all three sections"
+      ],
+      "status": "pending",
+      "priority": "medium",
+      "depends_on": ["feat-038", "feat-040"],
+      "attempts": []
+    },
+    {
+      "id": "feat-043",
+      "category": "ui",
+      "description": "Failure handling dialog commands (D-033): diagnose / retry / retry-with-hint / mark-done / abandon; each @feat-XXX + natural-language command invokes the corresponding handler",
+      "steps": [
+        "Parse dialog input for @feat-XXX patterns + command verbs (diagnose / retry / retry-with-hint / mark-done / abandon)",
+        "On retry-with-hint: server returns a proposed diff before re-running; UI shows the diff and a 'Confirm' button; on confirm, server re-runs the feature with the hint",
+        "On abandon: server marks the feature as deferred/superseded; UI confirms with the user first",
+        "On mark-done: server transitions the feature to passing (with a warning that no actual work was done)",
+        "Test: type '@feat-003 retry'; assert the feature transitions back to ready and a new run begins"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-038", "feat-042"],
+      "attempts": []
+    },
+    {
+      "id": "feat-044",
+      "category": "functional",
+      "description": "Intent classification (D-017): the daemon classifies user dialog input as 'chat' (no cards generated, plain response) or 'work' (cards generated); chat responses are streamed back without entering draft flow",
+      "steps": [
+        "Implement classify_intent() in the daemon that takes user input and returns 'chat' or 'work'",
+        "For chat: respond with a plain text message (no draft cards)",
+        "For work: enter the decomposition flow (feat-045)",
+        "The classification prompt is part of the dialog_model's system prompt",
+        "Test: send a chat message ('hi how are you'); assert response is plain text with no draft cards",
+        "Test: send a work message ('add OAuth login'); assert response has draft cards"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-019", "feat-023"],
+      "attempts": []
+    },
+    {
+      "id": "feat-045",
+      "category": "functional",
+      "description": "Auto-decomposition (D-002/D-006/D-008/D-029): when work intent is detected, the LLM proposes one or more draft features with id (temp-XXX), title, description, steps, depends_on; full feature_list is in the prompt for context",
+      "steps": [
+        "Implement decompose(user_input, feature_list) in the daemon that returns list of draft feature dicts",
+        "System prompt includes: target granularity (30-80 agent steps), DAG constraints (depends_on must exist), classification heuristic (loose similarity = no surface; partial = suggest enhancement; strong duplicate = 3-way clarification)",
+        "Draft cards have id=tmp-XXX (auto-generated), title, description, steps (3-7), depends_on, optional kind/fixes",
+        "Pass the full feature_list (id + title + description of each) to the LLM as context per D-029",
+        "Test: send 'add OAuth login' with an empty feature list; assert 1-2 draft cards returned with realistic steps"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-044", "feat-010"],
+      "attempts": []
+    },
+    {
+      "id": "feat-046",
+      "category": "functional",
+      "description": "DAG satisfiability validation (D-003/D-004/D-027): at confirm time, validate that all draft cards' depends_on references existing features; reject drafts with non-existent deps; algorithm decides feature status (pending/blocked) from DAG topology",
+      "steps": [
+        "Implement validate_drafts(drafts, feature_list) that checks every depends_on exists",
+        "On invalid: return clear error message, do not insert",
+        "On valid: for each new feature, compute initial status from DAG topology: status=pending if all deps=passing, else status=blocked",
+        "Test: submit drafts with depends_on referring to a non-existent feat-XXX; assert validation rejects"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-010", "feat-045"],
+      "attempts": []
+    },
+    {
+      "id": "feat-047",
+      "category": "functional",
+      "description": "Crash recovery via checkpoint resume (D-051): when daemon restarts mid-feature, in-flight threads are restored from SQLite checkpoints; user is unaware; restart budget per feature limits silent recovery",
+      "steps": [
+        "On daemon startup, list active threads (those with checkpoints but not terminal state)",
+        "For each active thread: resume execution from the latest checkpoint",
+        "On resume, increment the feature's restart counter; check budget per feat-024",
+        "Test: start a feature with HEDDLE_FAKE_LLM=1; kill the daemon at step 5 of 10; restart daemon; assert the feature resumes at step 5 and completes"
+      ],
+      "status": "pending",
+      "priority": "medium",
+      "depends_on": ["feat-018", "feat-024"],
+      "attempts": []
+    },
+    {
+      "id": "feat-048",
+      "category": "functional",
+      "description": "Structured event log: every state-changing operation (status transition, attempt start/finish, draft confirm, dialog submit) emits a structured event to the WS stream and to per-project logs",
+      "steps": [
+        "Define event types per feat-029",
+        "At each state-change site (feature_list_io mark_*, dialog handlers, daemon lifecycle), emit a structured event",
+        "Events flow: daemon -> Node.js -> Browser WS + per-project log file",
+        "Test: trigger a feature transition; assert the WS event reaches the browser and the log file has a matching line"
+      ],
+      "status": "pending",
+      "priority": "medium",
+      "depends_on": ["feat-029", "feat-030"],
+      "attempts": []
+    },
+    {
+      "id": "feat-049",
+      "category": "functional",
+      "description": "End-to-end happy path test: user adds a project, types 'add X' in dialog, confirms draft, drags card to in_progress, agent executes via HEDDLE_FAKE_LLM, feature transitions to passing",
+      "steps": [
+        "Playwright test: open heddle at http://localhost:5173 (test harness starts everything)",
+        "Click 'Add project', pick a test fixture directory with a real feature_list.json",
+        "Type 'add a hello world feature' in dialog; assert draft card appears",
+        "Click 'Confirm all'; assert new feature appears in ready column",
+        "Drag the new feature to in_progress; with HEDDLE_FAKE_LLM=1 and a fixture that completes in 2 steps, assert the feature transitions to passing"
+      ],
+      "status": "pending",
+      "priority": "medium",
+      "depends_on": ["feat-040", "feat-045", "feat-046"],
+      "attempts": []
+    },
+    {
+      "id": "feat-050",
+      "category": "functional",
+      "description": "`heddle start` command (T-003): launches Node.js backend (which supervises Python daemon); auto-opens browser to http://localhost:5173; refuses non-loopback binding",
+      "steps": [
+        "Implement `heddle start` console-script entry point in packages/cli",
+        "It spawns the Node.js server (which in turn supervises the daemon)",
+        "On successful startup, opens default browser to http://localhost:5173",
+        "On port conflict, clear error and non-zero exit",
+        "On non-loopback binding request, clear error and non-zero exit",
+        "Test: run heddle start in a temp project; assert browser opens, server is reachable, daemon is alive"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-027", "feat-028", "feat-029", "feat-030"],
+      "attempts": []
+    },
+    {
+      "id": "feat-051",
+      "category": "functional",
+      "description": "`heddle dev` command (T-019): starts Vite dev server (5173) + Node.js backend (5174) + daemon; Vite proxies /api and /ws to Fastify; hot reload on file changes for all three",
+      "steps": [
+        "Implement `heddle dev` console-script entry point",
+        "Spawns three processes: Vite dev server, Node.js backend, Python daemon",
+        "Vite config proxies /api and /ws to http://localhost:5174",
+        "Node.js backend uses tsx --watch for hot reload of TypeScript code",
+        "Daemon uses watchfiles for Python code hot reload",
+        "Test: run heddle dev; edit a React component; assert browser hot-reloads; edit a Python tool; assert daemon reloads"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-026", "feat-032"],
+      "attempts": []
+    },
+    {
+      "id": "feat-052",
+      "category": "functional",
+      "description": "`heddle test` command: runs the full test pyramid - Vitest for JS, pytest for Python, Playwright for browser E2E; all under HEDDLE_FAKE_LLM=1 by default; exits non-zero on any failure",
+      "steps": [
+        "Implement `heddle test` console-script entry point",
+        "Runs: pnpm test (Vitest in packages/web + packages/cli) -> pytest (packages/daemon) -> pnpm --filter web test:e2e (Playwright)",
+        "HEDDLE_FAKE_LLM=1 in env for deterministic test responses",
+        "Aggregates exit codes; exits 0 only if all pass",
+        "Test: run heddle test in a clean checkout; assert exits 0",
+        "Test: deliberately break a test; assert exits non-zero"
+      ],
+      "status": "pending",
+      "priority": "high",
+      "depends_on": ["feat-006", "feat-007"],
+      "attempts": []
+    },
+    {
+      "id": "feat-053",
+      "category": "functional",
+      "description": "`heddle lint` command: runs ESLint on JS/TS, Ruff on Python, TypeScript --noEmit on TS; reports all issues; exits non-zero on any error",
+      "steps": [
+        "Implement `heddle lint` console-script entry point",
+        "Runs: eslint . (across packages), ruff check . (across Python), tsc --noEmit (across TS projects)",
+        "Aggregates exit codes; exits 0 only if all pass",
+        "Test: run heddle lint in a clean checkout; assert exits 0"
+      ],
+      "status": "pending",
+      "priority": "medium",
+      "depends_on": ["feat-003"],
+      "attempts": []
+    },
+    {
+      "id": "feat-054",
+      "category": "functional",
+      "description": "Post-confirm feature modification (D-054): split / merge / edit / reprioritize / add-dep / remove-dep via natural-language dialog commands referencing @feat-XXX; destructive ops show diff before execution; superseded features hide from main view",
+      "steps": [
+        "Implement parse_modify_command(dialog_input, feature_list) that returns the requested operation",
+        "On split: produce new draft cards + mark original with superseded_by; downstream features get new depends_on",
+        "On merge: combine features into one; originals marked superseded_by",
+        "On edit: show diff of proposed change; user confirms before applying",
+        "On reprioritize / add-dep / remove-dep: apply directly (non-destructive)",
+        "Test: type '@feat-003 拆成 3 个'; assert 3 draft cards produced and feat-003 marked superseded"
+      ],
+      "status": "pending",
+      "priority": "medium",
+      "depends_on": ["feat-010", "feat-038"],
+      "attempts": []
+    },
+    {
+      "id": "feat-055",
+      "category": "functional",
+      "description": "Sandbox enforcement in Web UI (D-053): the per-project sandbox level (read-only / edit-with-confirm / full) is set in .heddle/config.yaml; UI shows the current level; on edit-with-confirm, shows a confirm dialog before destructive tool calls",
+      "steps": [
+        "Settings panel in the project switcher shows current sandbox_level",
+        "User can change it (writes to .heddle/config.yaml)",
+        "On edit-with-confirm + agent tool call requiring confirmation: WS event triggers a modal in the browser",
+        "User clicks 'Approve' or 'Deny' in the modal; response goes back to the daemon via WS",
+        "Test: set sandbox=edit-with-confirm; trigger a Write tool call; assert the browser shows a confirm modal"
+      ],
+      "status": "pending",
+      "priority": "medium",
+      "depends_on": ["feat-021", "feat-038"],
+      "attempts": []
+    },
+    {
+      "id": "feat-056",
+      "category": "ui",
+      "description": "Kanban filter dropdown (D-024): in the kanban header, a dropdown lets user filter by kind (all / features / bugfixes / enhancements); filter applies to all three columns + lanes",
+      "steps": [
+        "Add a filter dropdown in the kanban header with options: all / features / bugfixes / enhancements",
+        "Filter state lives in Zustand",
+        "Filtered-out cards are hidden from all columns + lanes",
+        "Filter persists in localStorage so it survives page reload",
+        "Test: with bugfix + feature cards, switch filter to bugfixes; assert only bugfix cards are visible"
+      ],
+      "status": "pending",
+      "priority": "medium",
+      "depends_on": ["feat-035", "feat-037"],
+      "attempts": []
+    }
+  ],
+  "metadata": {
+    "total_features": 56,
+    "passing": 0,
+    "failing": 56,
+    "in_progress": 0,
+    "blocked": 1,
+    "deferred": 1,
+    "last_updated": "2026-09-11"
+  }
+}

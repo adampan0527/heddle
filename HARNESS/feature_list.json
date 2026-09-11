@@ -1,0 +1,53 @@
+{
+  "project_name": "Your Project Name",
+  "description": "Brief description of the project",
+  "features": [
+    {
+      "id": "feat-001",
+      "category": "functional",
+      "description": "Example feature description",
+      "steps": [
+        "Step 1: Navigate to the main interface",
+        "Step 2: Perform the action",
+        "Step 3: Verify the expected result"
+      ],
+      "status": "deferred",
+      "priority": "high",
+      "depends_on": [],
+      "attempts": [],
+      "deferred_until": "2026-08-23"
+    },
+    {
+      "id": "feat-002",
+      "category": "functional",
+      "description": "Second example feature — steps must be real, verifiable actions (no placeholders).",
+      "steps": [
+        "Open the example page in a browser",
+        "Confirm the page renders without console errors",
+        "Verify the documented UI element is visible"
+      ],
+      "status": "blocked",
+      "priority": "medium",
+      "depends_on": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "blocked",
+          "note": "baseline was pending; earlier verify command accidentally flipped it to in_progress; next session should reset to pending if no work was actually started",
+          "at": "2026-07-30"
+        }
+      ],
+      "blocked_reason": "baseline was pending; earlier verify command accidentally flipped it to in_progress; next session should reset to pending if no work was actually started"
+    }
+  ],
+  "metadata": {
+    "total_features": 2,
+    "passing": 0,
+    "failing": 2,
+    "in_progress": 0,
+    "blocked": 1,
+    "deferred": 1,
+    "last_updated": "2026-09-12"
+  }
+}

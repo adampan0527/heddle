@@ -1,0 +1,60 @@
+PROJECT PROGRESS LOG
+====================
+
+Project: [Project Name]
+Started: [Date]
+
+SESSION 0 - Initializer Agent
+-----------------------------
+Date: [Date]
+Worked on:
+- Set up project structure
+- Created feature_list.json with [count] features
+- Created init.sh for development server and testing
+- Initialized git repository
+- Made initial commit
+
+Feature Status:
+- Total features: [count]
+- Passing: 0
+- Failing: [count]
+
+Next Steps:
+- Coding agents should start working on the highest-priority failing features
+- Run init.sh before implementing new features
+- Test thoroughly before marking features as passing
+
+---
+
+### SESSION <N> — <ISO date>
+
+**Worked on:** <feature_id> @ <commit_sha> — [Feature description]
+
+**Status:** [one rendered label from `## Status values` below]
+
+**Features now passing:** [feature_id, ...] (<X> / <Y> total)
+
+**Notes:** [free text, max 500 chars; "(none)" if nothing]
+
+---
+
+## Status values
+
+Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
+`SESSION_STATUS_LABELS`). The values below are rendered labels only:
+
+- (`implemented_and_tested`) → "Implemented and tested"
+- (`implemented_not_tested`) → "Implemented, not yet tested"
+- (`in_progress_blocked`) → "In progress, blocked"
+- (`deferred`) → "Deferred"
+- (`no_op`) → "No-op"
+
+SUMMARY
+-------
+Total features: 2
+Passing: 0
+Failing: 2
+In progress: 0
+Blocked: 0
+Deferred: 1
+Last updated: 2026-07-24

@@ -1,0 +1,64 @@
+# Long-Running Agent Harness — gitignore
+
+# --- Python artifacts ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv/
+.venv/
+env/
+
+# --- Node artifacts ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.next/
+.nuxt/
+coverage/
+
+# --- Secrets and environment files ---
+.env
+.env.*
+.envrc
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+secrets.yaml
+secrets.yml
+credentials.json
+
+# --- IDE and editor artifacts ---
+.idea/
+.vscode/launch.json
+.vscode/*.log
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# --- Logs and temp files ---
+*.log
+logs/
+tmp/
+.cache/
+
+# --- Lock sentinels ---
+# file_lock writes sibling <name>.lock files next to its targets
+# (feature_list.json -> feature_list.json.lock, etc.). They are
+# recreated on every mutating run and are safe to delete at any time.
+*.lock
+
+# --- Allow tracked recommendations and placeholders ---
+!.gitkeep
+!.vscode/extensions.json
+!.vscode/settings.json
