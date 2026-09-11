@@ -1,0 +1,73 @@
+{
+  "project_name": "legacy-project",
+  "description": "Synthetic feature_list.json fixture in the pre-v0.1 HARNESS schema — no schema_version, no kind/fixes/enhances/superseded_by/implementation_model fields. Used by feat-016 / TestBackwardCompat to assert that load() backfills defaults and save() promotes the on-disk schema to v0.1.",
+  "features": [
+    {
+      "id": "feat-legacy-001",
+      "category": "functional",
+      "description": "Legacy feature A (was passing under HARNESS rules).",
+      "steps": [
+        "Step 1: do something",
+        "Step 2: verify result"
+      ],
+      "status": "passing",
+      "priority": "high",
+      "depends_on": [],
+      "attempts": [
+        {
+          "session": 0,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "completed in pre-v0.1 era",
+          "at": "2026-07-15"
+        }
+      ]
+    },
+    {
+      "id": "feat-legacy-002",
+      "category": "functional",
+      "description": "Legacy feature B (was pending).",
+      "steps": [
+        "Step 1: do something else",
+        "Step 2: verify result"
+      ],
+      "status": "pending",
+      "priority": "medium",
+      "depends_on": [
+        "feat-legacy-001"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "feat-legacy-003",
+      "category": "ui",
+      "description": "Legacy feature C (was deferred until a future date).",
+      "steps": [
+        "Step 1: render the panel",
+        "Step 2: toggle the lane"
+      ],
+      "status": "deferred",
+      "priority": "low",
+      "depends_on": [],
+      "attempts": [
+        {
+          "session": 0,
+          "by": "coding-agent",
+          "outcome": "deferred",
+          "note": "post-v0.1",
+          "at": "2026-07-15"
+        }
+      ],
+      "deferred_until": "2026-12-31"
+    }
+  ],
+  "metadata": {
+    "total_features": 3,
+    "passing": 1,
+    "failing": 2,
+    "in_progress": 0,
+    "blocked": 0,
+    "deferred": 1,
+    "last_updated": "2026-07-15"
+  }
+}

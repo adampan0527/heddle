@@ -628,5 +628,188 @@ class TestExtendedFields(unittest.TestCase):
         self.assertIn(chosen, {"feat-existing", "feat-zzz-not-superseded"})
 
 
+class TestBackwardCompat(unittest.TestCase):
+    """feat-016 — HARNESS-format feature_list.json still loads + saves cleanly.
+
+    Covers every step in the feat-016 spec:
+
+      1. Fixture file (tests/fixtures/old-harness-format.json) carries the
+         pre-v0.1 schema: no top-level `schema_version`, no per-feature
+         `kind` / `fixes` / `enhances` / `superseded_by` /
+         `implementation_model`.
+      2. `load()` succeeds; every feature is readable with `kind` defaulting
+         to "feature" and the other four extended fields defaulting to None.
+      3. `save()` promotes the file: on-disk `schema_version == 1` and every
+         feature gains the five extended fields (serialized as null where
+         unset so the on-disk schema is always complete).
+      4. The HARNESS CLI (`feature_list.py status`) reads the migrated file
+         and reports metadata counts that match the actual feature list.
+
+    This class never touches the live repo files; every test writes a copy
+    of the fixture into a temp file so it can mutate freely.
+    """
+
+    FIXTURE = Path(__file__).resolve().parent / "fixtures" / "old-harness-format.json"
+
+    def setUp(self):
+        if not self.FIXTURE.exists():
+            self.skipTest(f"fixture missing: {self.FIXTURE}")
+        self.tmp = Path(sys.argv[0]).parent / "_test_backward_compat.json"
+        # Copy the fixture verbatim so each test starts from a clean legacy file.
+        self.tmp.write_bytes(self.FIXTURE.read_bytes())
+
+    def tearDown(self):
+        if self.tmp.exists():
+            self.tmp.unlink()
+
+    # ---- step 1+2: legacy file loads cleanly with extended-field defaults ----
+
+    def test_legacy_fixture_has_no_schema_version_and_no_extended_fields(self):
+        """Sanity: the fixture really is in the pre-v0.1 shape.
+
+        If a future contributor adds the new fields to the fixture, this
+        test fails and signals the fixture needs to be regenerated to
+        actually exercise the backfill path.
+        """
+        raw = json.loads(self.FIXTURE.read_text(encoding="utf-8"))
+        self.assertNotIn(
+            "schema_version",
+            raw,
+            "fixture must not carry schema_version — that defeats the test",
+        )
+        for feat in raw["features"]:
+            for field in ("kind", "fixes", "enhances", "superseded_by", "implementation_model"):
+                self.assertNotIn(
+                    field,
+                    feat,
+                    f"feature {feat.get('id')!r} must not carry {field!r} in the legacy fixture",
+                )
+
+    def test_load_backfills_extended_field_defaults(self):
+        """step 2: load() returns a dict where every feature has the five
+        extended fields with their default values (kind=feature, others=None).
+        """
+        data = fl.load(self.tmp)
+        self.assertEqual(len(data["features"]), 3)
+        # In-memory schema_version is the legacy sentinel 0; the next save()
+        # promotes it to SCHEMA_VERSION.
+        self.assertEqual(data["schema_version"], 0)
+        for feat in data["features"]:
+            self.assertEqual(feat["kind"], "feature", f"kind default for {feat['id']!r}")
+            self.assertIsNone(feat["fixes"], f"fixes default for {feat['id']!r}")
+            self.assertIsNone(feat["enhances"], f"enhances default for {feat['id']!r}")
+            self.assertIsNone(feat["superseded_by"], f"superseded_by default for {feat['id']!r}")
+            self.assertIsNone(feat["implementation_model"], f"implementation_model default for {feat['id']!r}")
+            # Pre-existing fields must be preserved verbatim.
+            self.assertIn("id", feat)
+            self.assertIn("category", feat)
+            self.assertIn("status", feat)
+            self.assertIn("steps", feat)
+
+    # ---- step 3: save() migrates the on-disk schema to v0.1 ----
+
+    def test_save_promotes_schema_version_and_writes_extended_fields(self):
+        """step 3: after load+save, the on-disk schema is v0.1.
+        - top-level schema_version == SCHEMA_VERSION (= 1)
+        - every feature serializes the five extended fields (null when unset)
+        """
+        data = fl.load(self.tmp)
+        fl.save(self.tmp, data)
+
+        written = json.loads(self.tmp.read_text(encoding="utf-8"))
+        self.assertEqual(written["schema_version"], fl.SCHEMA_VERSION)
+        for feat in written["features"]:
+            self.assertIn("kind", feat)
+            self.assertIn("fixes", feat)
+            self.assertIn("enhances", feat)
+            self.assertIn("superseded_by", feat)
+            self.assertIn("implementation_model", feat)
+            # Original fields are preserved.
+            self.assertEqual(feat["category"], "functional" if feat["id"] != "feat-legacy-003" else "ui")
+
+    def test_save_then_load_round_trip_is_stable(self):
+        """Round-trip is a no-op after the first save(): the on-disk file
+        already carries the v0.1 schema, so a second load+save must produce
+        byte-identical output. This is the durable invariant the library
+        must preserve.
+        """
+        data = fl.load(self.tmp)
+        fl.save(self.tmp, data)
+        before = self.tmp.read_bytes()
+        fl.save(self.tmp, fl.load(self.tmp))
+        after = self.tmp.read_bytes()
+        self.assertEqual(before, after)
+
+    # ---- step 4: HARNESS-side status command reads the migrated file ----
+
+    def test_harness_cli_status_reports_correct_metadata_after_migration(self):
+        """step 4: pipe the (now-migrated) file through HARNESS/tools/feature_list.py
+        status and assert the counters match the actual feature list. This
+        verifies the HARNESS CLI works against v0.1-migrated legacy files
+        without modification.
+
+        The HARNESS CLI resolves its target path via `_resolve_path(None)`,
+        which returns the module-level `DEFAULT_PATH` constant. To exercise
+        cmd_status against our temp file we monkey-patch the constant for
+        the duration of the call. This is the same path the CLI walks when
+        it is invoked from the repo root against the live feature list.
+        """
+        # Migrate the file first so we exercise the v0.1-on-disk path.
+        data = fl.load(self.tmp)
+        fl.save(self.tmp, data)
+
+        import io
+        import contextlib
+
+        from HARNESS.tools import feature_list as harness_fl
+
+        # cmd_status delegates to load_features() (alias for fl.load) which
+        # reads from DEFAULT_PATH when called with no argument. Patch the
+        # constant in BOTH the library and the CLI shim so the lookup hits
+        # our tmp file regardless of which module cmd_status reaches into.
+        original_default = fl.DEFAULT_PATH
+        original_cli_path = harness_fl.FEATURE_LIST_PATH
+        fl.DEFAULT_PATH = self.tmp
+        harness_fl.FEATURE_LIST_PATH = self.tmp
+        try:
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                harness_fl.cmd_status(argparse_namespace_stub())  # type: ignore[arg-type]
+            output = buf.getvalue()
+        finally:
+            fl.DEFAULT_PATH = original_default
+            harness_fl.FEATURE_LIST_PATH = original_cli_path
+
+        # Parse the `key: value` lines from cmd_status output.
+        parsed: dict[str, str] = {}
+        for line in output.splitlines():
+            if ":" not in line:
+                continue
+            key, _, value = line.partition(":")
+            parsed[key.strip()] = value.strip()
+
+        # The migrated file has 3 features (1 passing + 1 pending + 1 deferred).
+        self.assertEqual(parsed.get("total_features"), "3")
+        self.assertEqual(parsed.get("passing"), "1")
+        self.assertEqual(parsed.get("in_progress"), "0")
+        self.assertEqual(parsed.get("blocked"), "0")
+        self.assertEqual(parsed.get("deferred"), "1")
+        # failing = total - passing per the HARNESS contract.
+        self.assertEqual(parsed.get("failing"), "2")
+
+
+def argparse_namespace_stub():
+    """Return an empty argparse.Namespace.
+
+    cmd_status (and the other HARNESS CLI command functions) ignore their
+    `args` parameter — they pull everything off module-level globals. This
+    stub exists only to satisfy the call signature without dragging in
+    argparse machinery for a single test.
+    """
+    import argparse
+
+    return argparse.Namespace()
+
+
 if __name__ == "__main__":
     unittest.main()

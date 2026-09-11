@@ -402,13 +402,21 @@
         "Test: save it back; assert the saved file has schema_version=1 and all new optional fields written",
         "Test: feed it through the HARNESS tools/feature_list.py status command; assert it reports correct metadata counts"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-009",
         "feat-010"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-016",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1394,8 +1402,8 @@
   ],
   "metadata": {
     "total_features": 56,
-    "passing": 8,
-    "failing": 48,
+    "passing": 9,
+    "failing": 47,
     "in_progress": 0,
     "blocked": 1,
     "deferred": 1,
