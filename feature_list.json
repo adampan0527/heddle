@@ -459,13 +459,21 @@
         "Test: start daemon; connect a websocket client from 127.0.0.1; assert handshake succeeds",
         "Test: start daemon on port 8765 twice; second instance exits with port-conflict error"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-005",
         "feat-008"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-017",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1426,8 +1434,8 @@
   ],
   "metadata": {
     "total_features": 56,
-    "passing": 12,
-    "failing": 44,
+    "passing": 13,
+    "failing": 43,
     "in_progress": 0,
     "blocked": 1,
     "deferred": 1,
