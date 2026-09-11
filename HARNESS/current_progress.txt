@@ -97,11 +97,23 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 
 ---
 
+### SESSION 5 — 2026-09-12
+
+**Worked on:** feat-011 — ~/.heddle/configs.yaml + heddle configs list (T-023, D-055, T-015)
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-011 (8 / 56 total)
+
+**Notes:** feat-011: Added heddle_common/configs_io.py (Config dataclass, load/save/add/update/delete/get/list, ensure_configs first-run UX, resolve_api_key + resolve_api_key_for_config chokepoints per T-015). DEFAULT_TEMPLATES ships the four v0.1 templates: anthropic-claude-sonnet / openai-gpt-4 / bedrock-claude / ollama-llama. Added PyYAML>=6.0 to heddle-common deps. CLI: `heddle configs list [--config-path]` rendered via Click; marks ✓/✗ for api_key_env resolution; NEVER prints the resolved value (T-015). 33 new configs_io tests (defaults, schema, first-run idempotency, mutations, T-015 chokepoint). End-to-end CLI smoke: `heddle configs list --config-path /tmp/x.yaml` exits 0, creates file with 4 defaults, renders them with env-var set/unset markers. 114/114 unittest pass. handoff_check 10/10. feat-023 (4 LLM providers), feat-031 (config resolution) now unblocked.
+
+---
+
 SUMMARY
 -------
 Total features: 56
-Passing: 7
-Failing: 49
+Passing: 8
+Failing: 48
 In progress: 0
 Blocked: 1
 Deferred: 1
