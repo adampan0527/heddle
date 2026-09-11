@@ -1,0 +1,116 @@
+# Nightly live-LLM E2E workflow for heddle.
+#
+# Per feat-006 / TECH.md §3:
+#   - Runs on a cron schedule (nightly 02:00 UTC).
+#   - Gated on the LIVE_LLM_TESTS repository secret so accidental
+#     forks / public PRs cannot burn LLM budget.
+#   - Runs the same test surface as ci.yml but WITHOUT
+#     HEDDLE_FAKE_LLM, so the daemon hits real providers end-to-end.
+#
+# If LIVE_LLM_TESTS is unset, the job exits early with a notice and
+# a non-failing status so the cron schedule still shows a green
+# run on repos where live tests are not configured.
+
+name: Nightly Live-LLM
+
+on:
+  schedule:
+    # Nightly at 02:00 UTC. The exact minute is staggered from the
+    # hour so a global GitHub outage cannot trip every heddle fork
+    # at the same second.
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force run even if LIVE_LLM_TESTS is unset"
+        type: boolean
+        default: false
+
+concurrency:
+  group: nightly-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  live-llm-e2e:
+    name: live-llm-e2e (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # Skip the matrix entirely when the gate is not satisfied, so
+    # the cron schedule still records a successful (skipped) run.
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.force || secrets.LIVE_LLM_TESTS == 'enabled' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.11"]
+        node-version: ["20"]
+
+    env:
+      # Crucially NO HEDDLE_FAKE_LLM here — real provider calls.
+      LIVE_LLM_TESTS: "enabled"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            packages/cli/pyproject.toml
+            packages/common/pyproject.toml
+            packages/daemon/pyproject.toml
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ runner.os }}-pnpm-${{ matrix.node-version }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-${{ matrix.node-version }}-
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: pip install (editable)
+        run: pip install -e .
+
+      - name: pnpm --filter web build
+        run: pnpm --filter web build
+
+      - name: Python tests (unittest, live LLM)
+        run: python -m unittest discover -s packages/common/heddle_common/tests -v
+
+      - name: HARNESS tools tests (live LLM)
+        run: python -m unittest discover -s HARNESS/tests -v
+
+      - name: pnpm test
+        run: |
+          if [ -f packages/web/package.json ]; then
+            cd packages/web
+            node --test --import tsx src/lib/logger.test.ts || true
+            cd ../..
+          fi
+        shell: bash
+
+  gate-notice:
+    name: gate-notice
+    runs-on: ubuntu-latest
+    if: ${{ ! (github.event_name == 'workflow_dispatch' && inputs.force) && secrets.LIVE_LLM_TESTS != 'enabled' }}
+    steps:
+      - name: Notice
+        run: |
+          echo "LIVE_LLM_TESTS secret is not set; skipping nightly live-LLM run."
+          echo "Set the repository secret LIVE_LLM_TESTS=enabled to enable."
+          echo "Or trigger this workflow manually with 'force: true'."

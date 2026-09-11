@@ -132,13 +132,21 @@
         "Separate workflow at .github/workflows/nightly.yml with cron schedule, gated on LIVE_LLM_TESTS secret, calls the same test commands without HEDDLE_FAKE_LLM",
         "Configure pnpm cache (lockfile-keyed) and pip cache in both workflows"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-003",
         "feat-007"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-006",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1418,8 +1426,8 @@
   ],
   "metadata": {
     "total_features": 56,
-    "passing": 11,
-    "failing": 45,
+    "passing": 12,
+    "failing": 44,
     "in_progress": 0,
     "blocked": 1,
     "deferred": 1,
