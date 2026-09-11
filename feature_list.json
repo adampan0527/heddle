@@ -126,7 +126,7 @@
         "Modify the agent runtime to short-circuit real LLM calls and emit the scripted responses when HEDDLE_FAKE_LLM=1",
         "Integration test: run a sample feature end-to-end with HEDDLE_FAKE_LLM=1 and assert it reaches the expected terminal state"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "priority": "high",
       "depends_on": [
         "feat-003"
@@ -1092,7 +1092,7 @@
     "total_features": 56,
     "passing": 5,
     "failing": 51,
-    "in_progress": 0,
+    "in_progress": 1,
     "blocked": 1,
     "deferred": 1,
     "last_updated": "2026-09-12"

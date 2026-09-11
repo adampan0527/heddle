@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "responses": [
+    {
+      "content": "I'll start by exploring the project structure.",
+      "tool_calls": [
+        {
+          "name": "Glob",
+          "args": {"pattern": "**/*.py"}
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    {
+      "content": "Now I'll read the main module to understand it.",
+      "tool_calls": [
+        {
+          "name": "Read",
+          "args": {"path": "src/main.py"}
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    {
+      "content": "Here's my proposed edit to fix the off-by-one in the loop.",
+      "tool_calls": [
+        {
+          "name": "Edit",
+          "args": {
+            "path": "src/main.py",
+            "old_text": "for i in range(len(items)):\n    process(items[i + 1])",
+            "new_text": "for item in items:\n    process(item)"
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    {
+      "content": "Edit applied. The fix looks good.",
+      "tool_calls": [],
+      "stop_reason": "end_turn"
+    }
+  ]
+}
