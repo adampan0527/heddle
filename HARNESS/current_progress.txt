@@ -73,11 +73,23 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 
 ---
 
+### SESSION 3 — 2026-09-12
+
+**Worked on:** feat-007 @ 9ddf847 — HEDDLE_FAKE_LLM fixture format + loader + FakeLLM + chokepoint (T-018, T-031)
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-007 (6 / 56 total)
+
+**Notes:** feat-007: Added heddle_common/fake_llm.py with ScriptedToolCall / ScriptedResponse dataclasses, load_fixture() (strict schema validation: rejects unknown keys, bad stop_reason, non-string tool names, etc.; enforces MAX_FIXTURE_BYTES + MAX_FIXTURE_RESPONSES), FakeLLM (sequential or loop=True; FakeLLMExhausted when non-looping runs out), fake_llm_or_real() chokepoint that returns FakeLLM only under HEDDLE_FAKE_LLM ∈ {1,true,yes,on} AND a fixture_path is provided (loud failure otherwise — no silent fallback). Sample fixture shipped at packages/daemon/tests/fixtures/sample_agent_run.json (4 turns: Glob→Read→Edit→end_turn). feat-019's agent_runtime.py will call fake_llm_or_real(real_factory=..., fixture_path=...) with no branching of its own. 30 new fake_llm tests + 32 existing = 62/62 unittest pass. handoff_check 10/10. feat-006 (CI), feat-052 (heddle test) now unblocked.
+
+---
+
 SUMMARY
 -------
 Total features: 56
-Passing: 5
-Failing: 51
+Passing: 6
+Failing: 50
 In progress: 0
 Blocked: 1
 Deferred: 1

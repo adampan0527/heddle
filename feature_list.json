@@ -126,12 +126,20 @@
         "Modify the agent runtime to short-circuit real LLM calls and emit the scripted responses when HEDDLE_FAKE_LLM=1",
         "Integration test: run a sample feature end-to-end with HEDDLE_FAKE_LLM=1 and assert it reaches the expected terminal state"
       ],
-      "status": "in_progress",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-003"
       ],
-      "attempts": []
+      "attempts": [
+        {
+          "session": 2,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-007",
+          "at": "2026-09-12"
+        }
+      ]
     },
     {
       "id": "feat-008",
@@ -1090,9 +1098,9 @@
   ],
   "metadata": {
     "total_features": 56,
-    "passing": 5,
-    "failing": 51,
-    "in_progress": 1,
+    "passing": 6,
+    "failing": 50,
+    "in_progress": 0,
     "blocked": 1,
     "deferred": 1,
     "last_updated": "2026-09-12"
