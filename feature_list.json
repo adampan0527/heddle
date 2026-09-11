@@ -15,7 +15,12 @@
       "priority": "high",
       "depends_on": [],
       "attempts": [],
-      "deferred_until": "2026-08-23"
+      "deferred_until": "2026-08-23",
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-002",
@@ -38,7 +43,12 @@
           "at": "2026-07-30"
         }
       ],
-      "blocked_reason": "baseline was pending; earlier verify command accidentally flipped it to in_progress; next session should reset to pending if no work was actually started"
+      "blocked_reason": "baseline was pending; earlier verify command accidentally flipped it to in_progress; next session should reset to pending if no work was actually started",
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-003",
@@ -56,7 +66,12 @@
       "status": "passing",
       "attempts": [],
       "priority": "high",
-      "depends_on": []
+      "depends_on": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-004",
@@ -75,7 +90,12 @@
       "priority": "high",
       "depends_on": [
         "feat-003"
-      ]
+      ],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-005",
@@ -93,7 +113,12 @@
       "priority": "high",
       "depends_on": [
         "feat-003"
-      ]
+      ],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-006",
@@ -113,7 +138,12 @@
         "feat-003",
         "feat-007"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-007",
@@ -139,7 +169,12 @@
           "note": "feat-007",
           "at": "2026-09-12"
         }
-      ]
+      ],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-008",
@@ -158,7 +193,12 @@
       "priority": "high",
       "depends_on": [
         "feat-003"
-      ]
+      ],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-009",
@@ -186,7 +226,12 @@
           "note": "feat-009",
           "at": "2026-09-12"
         }
-      ]
+      ],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-010",
@@ -201,12 +246,25 @@
         "Test: old-format JSON without kind loads with kind defaulting to feature; new-format JSON loads with all fields preserved",
         "Test: save() then load() yields byte-identical JSON (modulo schema_version)"
       ],
-      "status": "in_progress",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-009"
       ],
-      "attempts": []
+      "attempts": [
+        {
+          "session": 2,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-010",
+          "at": "2026-09-12"
+        }
+      ],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-011",
@@ -225,7 +283,12 @@
       "depends_on": [
         "feat-008"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-012",
@@ -244,7 +307,12 @@
       "depends_on": [
         "feat-008"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-013",
@@ -264,7 +332,12 @@
       "depends_on": [
         "feat-008"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-014",
@@ -282,7 +355,12 @@
         "feat-012",
         "feat-018"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-015",
@@ -299,7 +377,12 @@
       "depends_on": [
         "feat-005"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-016",
@@ -317,7 +400,12 @@
         "feat-009",
         "feat-010"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-017",
@@ -337,7 +425,12 @@
         "feat-005",
         "feat-008"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-018",
@@ -355,7 +448,12 @@
       "depends_on": [
         "feat-017"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-019",
@@ -374,7 +472,12 @@
         "feat-018",
         "feat-021"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-020",
@@ -395,7 +498,12 @@
       "depends_on": [
         "feat-019"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-021",
@@ -414,7 +522,12 @@
       "depends_on": [
         "feat-020"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-022",
@@ -433,7 +546,12 @@
       "depends_on": [
         "feat-019"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-023",
@@ -452,7 +570,12 @@
         "feat-011",
         "feat-013"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-024",
@@ -471,7 +594,12 @@
         "feat-018",
         "feat-029"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-025",
@@ -490,7 +618,12 @@
         "feat-005",
         "feat-015"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-026",
@@ -510,7 +643,12 @@
         "feat-003",
         "feat-005"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-027",
@@ -530,7 +668,12 @@
         "feat-017",
         "feat-026"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-028",
@@ -552,7 +695,12 @@
         "feat-026",
         "feat-012"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-029",
@@ -572,7 +720,12 @@
         "feat-027",
         "feat-030"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-030",
@@ -592,7 +745,12 @@
         "feat-017",
         "feat-027"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-031",
@@ -611,7 +769,12 @@
         "feat-023",
         "feat-030"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-032",
@@ -630,7 +793,12 @@
       "depends_on": [
         "feat-003"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-033",
@@ -650,7 +818,12 @@
         "feat-029",
         "feat-032"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-034",
@@ -670,7 +843,12 @@
         "feat-028",
         "feat-032"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-035",
@@ -690,7 +868,12 @@
       "depends_on": [
         "feat-032"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-036",
@@ -709,7 +892,12 @@
       "depends_on": [
         "feat-035"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-037",
@@ -728,7 +916,12 @@
       "depends_on": [
         "feat-035"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-038",
@@ -748,7 +941,12 @@
         "feat-028",
         "feat-035"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-039",
@@ -766,7 +964,12 @@
       "depends_on": [
         "feat-038"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-040",
@@ -784,7 +987,12 @@
       "depends_on": [
         "feat-038"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-041",
@@ -805,7 +1013,12 @@
       "depends_on": [
         "feat-035"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-042",
@@ -824,7 +1037,12 @@
         "feat-038",
         "feat-040"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-043",
@@ -843,7 +1061,12 @@
         "feat-038",
         "feat-042"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-044",
@@ -863,7 +1086,12 @@
         "feat-019",
         "feat-023"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-045",
@@ -882,7 +1110,12 @@
         "feat-044",
         "feat-010"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-046",
@@ -900,7 +1133,12 @@
         "feat-010",
         "feat-045"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-047",
@@ -918,7 +1156,12 @@
         "feat-018",
         "feat-024"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-048",
@@ -936,7 +1179,12 @@
         "feat-029",
         "feat-030"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-049",
@@ -956,7 +1204,12 @@
         "feat-045",
         "feat-046"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-050",
@@ -978,7 +1231,12 @@
         "feat-029",
         "feat-030"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-051",
@@ -998,7 +1256,12 @@
         "feat-026",
         "feat-032"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-052",
@@ -1018,7 +1281,12 @@
         "feat-006",
         "feat-007"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-053",
@@ -1035,7 +1303,12 @@
       "depends_on": [
         "feat-003"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-054",
@@ -1055,7 +1328,12 @@
         "feat-010",
         "feat-038"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-055",
@@ -1074,7 +1352,12 @@
         "feat-021",
         "feat-038"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     },
     {
       "id": "feat-056",
@@ -1093,14 +1376,19 @@
         "feat-035",
         "feat-037"
       ],
-      "attempts": []
+      "attempts": [],
+      "kind": "feature",
+      "fixes": null,
+      "enhances": null,
+      "superseded_by": null,
+      "implementation_model": null
     }
   ],
   "metadata": {
     "total_features": 56,
-    "passing": 6,
-    "failing": 50,
-    "in_progress": 1,
+    "passing": 7,
+    "failing": 49,
+    "in_progress": 0,
     "blocked": 1,
     "deferred": 1,
     "last_updated": "2026-09-12"

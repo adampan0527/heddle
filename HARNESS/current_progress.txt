@@ -85,11 +85,23 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 
 ---
 
+### SESSION 4 — 2026-09-12
+
+**Worked on:** feat-010 @ d146902 — extended feature fields: kind/fixes/enhances/superseded_by/implementation_model (D-018, D-023, D-054, D-055, D-060)
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-010 (7 / 56 total)
+
+**Notes:** feat-010: Added KINDS=(feature,bugfix,enhancement) + DEFAULT_KIND=feature to feature_list_io. _ensure_extras now backfills all five new fields; load() runs _ensure_extras over every feature so legacy files gain the schema on read. add() gained 5 kwargs (kind/fixes/enhances/superseded_by/implementation_model) with full validation: kind=bugfix requires fixes+target exists+target≠self; kind=enhancement same for enhances; superseded_by is comma-string or list, all ids must exist; empty superseded_by normalizes to null. next_feature() now skips features whose superseded_by != null (D-054). save() always writes all five fields (null when unset). 19 new tests cover: defaults backfill, validation errors, round-trip, old-format migration, save+load byte-identical, next_feature skip of superseded. 81/81 unittest pass. handoff_check 10/10. feat-016, feat-045, feat-046, feat-054 now unblocked.
+
+---
+
 SUMMARY
 -------
 Total features: 56
-Passing: 6
-Failing: 50
+Passing: 7
+Failing: 49
 In progress: 0
 Blocked: 1
 Deferred: 1
