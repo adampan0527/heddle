@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """CLI subcommand entry. v0.1 stubs only — see feat-050 / feat-051 / feat-052 / feat-053."""
 
 from __future__ import annotations

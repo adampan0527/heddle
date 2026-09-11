@@ -51,21 +51,21 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 
 ### SESSION 1 — 2026-09-12
 
-**Worked on:** feat-003 — Monorepo skeleton (pnpm workspaces + setuptools umbrella + packages/{web,cli,daemon})
+**Worked on:** feat-003 — Monorepo skeleton (pnpm workspaces + setuptools umbrella + packages/{web,cli,daemon}); feat-004 — Apache 2.0 LICENSE + SPDX-License-Identifier headers
 
 **Status:** Implemented and tested
 
-**Features now passing:** feat-003 (1 / 56 total)
+**Features now passing:** feat-003, feat-004 (2 / 56 total)
 
-**Notes:** pnpm install OK (68 packages), pip install -e . OK, heddle --version returns 0.0.1, pnpm --filter web dev starts Vite on 127.0.0.1:5173 with HTTP 200. Both heddle_cli and heddle_daemon importable. TypeScript typecheck clean. Initialized git repo at heddle root with DESIGN.md, TECH.md, feature_list.json, HARNESS/ as the first commit.
+**Notes:** feat-003: pnpm install OK (68 packages), pip install -e . OK, heddle --version 0.0.1, pnpm --filter web dev (Vite HTTP 200 on 127.0.0.1:5173), both Python packages importable, TypeScript typecheck clean. feat-004: LICENSE (Apache 2.0) at root, SPDX-Apache-2.0 headers in 7 packages/* source files, README has License section + HARNESS MIT notice, scripts/check_spdx_headers.py asserts coverage and exits 0. HARNESS/ kept MIT (vendored Anthropic harness). Git initialized with design docs as first commit.
 
 ---
 
 SUMMARY
 -------
 Total features: 56
-Passing: 1
-Failing: 55
+Passing: 2
+Failing: 54
 In progress: 0
 Blocked: 1
 Deferred: 1
