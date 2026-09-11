@@ -49,6 +49,18 @@ VALID_CATEGORIES: Final[frozenset[str]] = frozenset({
 VALID_PRIORITIES: Final[frozenset[str]] = frozenset({"high", "medium", "low"})
 VALID_ATTEMPT_OUTCOMES: Final[tuple[str, ...]] = ("passing", "blocked", "deferred", "regressed")
 
+# Feature "kind" — the categorisation that drives the kanban filter and
+# the bugfix / enhancement validation rules. Per D-018, D-023, D-060:
+#   - "feature"    : new work (default; UI default chip is gray)
+#   - "bugfix"     : fixes a specific feature; `fixes` must be set
+#   - "enhancement": adds capability to an existing feature; `enhances`
+#                    must be set. v0.1 UI does not render the enhancement
+#                    kind (D-060 says it's post-v0.1), but the schema
+#                    supports it so the data layer does not need to
+#                    change when the UI catches up.
+KINDS: Final[tuple[str, ...]] = ("feature", "bugfix", "enhancement")
+DEFAULT_KIND: Final[str] = "feature"
+
 # ---------- feature_list.json schema version (T-022 / feat-009) ----------
 #
 # `feature_list.json` carries a top-level `schema_version: <int>` field.
@@ -133,6 +145,14 @@ def load(path: Path | str | None = None) -> dict[str, Any]:
     if "features" not in data or not isinstance(data["features"], list):
         fail(f"{p} must contain a 'features' array.")
 
+    # feat-010: backfill the five extended fields on every feature so
+    # downstream code (and `save()`'s "always write all fields" rule)
+    # can rely on them being present. setdefault keeps user-supplied
+    # values intact, so this is a no-op for already-extended files.
+    for feat in data["features"]:
+        if isinstance(feat, dict):
+            _ensure_extras(feat)
+
     raw_version = data.get("schema_version")
     if raw_version is None:
         # Legacy file predates the schema_version field. Treat as v0
@@ -211,6 +231,20 @@ def _ensure_extras(feature: dict[str, Any]) -> None:
     feature.setdefault("steps", [])
     feature.setdefault("depends_on", [])
     feature.setdefault("attempts", [])
+    # feat-010 / D-018, D-023, D-054, D-055, D-060: every feature carries
+    # the five extended fields with documented defaults. setdefault keeps
+    # already-set values intact (so a load() + save() round-trip is
+    # faithful to whatever the user wrote) but backfills missing keys.
+    feature.setdefault("kind", DEFAULT_KIND)
+    feature.setdefault("fixes", None)
+    feature.setdefault("enhances", None)
+    feature.setdefault("superseded_by", None)
+    feature.setdefault("implementation_model", None)
+    # Defensive: if a legacy file (or external editor) wrote
+    # `superseded_by: []` instead of null, normalize to None so
+    # `next_feature` skips it and consumers don't have to special-case.
+    if feature.get("superseded_by") == []:
+        feature["superseded_by"] = None
 
 
 def _clear_status_extras(feature: dict[str, Any]) -> None:
@@ -302,6 +336,11 @@ def add(
     step: list[str] | tuple[str, ...] = (),
     steps_file: Path | str | None = None,
     depends_on: str = "",
+    kind: str | None = None,
+    fixes: str | None = None,
+    enhances: str | None = None,
+    superseded_by: list[str] | tuple[str, ...] | str | None = None,
+    implementation_model: str | None = None,
 ) -> None:
     """Append a new feature to feature_list.json at `path`.
 
@@ -310,6 +349,11 @@ def add(
       - category in VALID_CATEGORIES, status in STATUSES (not 'passing')
       - depends_on: no self-deps, dedup, all ids exist
       - STEPS_MAX steps, each string <= STEP_MAX_CHARS, no placeholders
+      - kind in KINDS (defaults to DEFAULT_KIND)
+      - if kind=bugfix then `fixes` is set and the target exists
+      - if kind=enhancement then `enhances` is set and the target exists
+      - superseded_by: list of existing feature ids (DAG re-link is
+        handled by the LLM; the library only validates the entries exist)
     """
     if not ID_REGEX.fullmatch(feature_id):
         fail(
@@ -326,6 +370,10 @@ def add(
     if status == "passing":
         fail("status=passing is reserved for mark_passing; cannot be used at add")
     priority_norm = priority if priority in VALID_PRIORITIES else "medium"
+
+    kind_norm = kind if kind in KINDS else DEFAULT_KIND
+    if kind is not None and kind not in KINDS:
+        fail(f"kind {kind!r} is not in {sorted(KINDS)}")
 
     steps = _resolve_steps(list(step), steps_file)
     if len(steps) > STEPS_MAX:
@@ -362,6 +410,49 @@ def add(
     if missing:
         fail(f"depends_on references unknown feature(s): {', '.join(missing)}")
 
+    # ---- feat-010 / D-023, D-060: kind-pointer validation ----
+    # bugfix requires `fixes`; enhancement requires `enhances`. The
+    # target feature must already exist (we cannot validate its status
+    # at add-time because the bugfix could be added before the broken
+    # feature is recorded; feat-016's DAG validation catches "fixes
+    # already-passing" later).
+    if kind_norm == "bugfix":
+        if fixes is None or fixes == "":
+            fail(f"kind=bugfix requires a non-empty `fixes` target (got {fixes!r})")
+        if fixes not in known_ids:
+            fail(f"bugfix `fixes` target {fixes!r} does not exist")
+        if fixes == feature_id:
+            fail(f"bugfix {feature_id!r} cannot fix itself")
+    if kind_norm == "enhancement":
+        if enhances is None or enhances == "":
+            fail(f"kind=enhancement requires a non-empty `enhances` target (got {enhances!r})")
+        if enhances not in known_ids:
+            fail(f"enhancement `enhances` target {enhances!r} does not exist")
+        if enhances == feature_id:
+            fail(f"enhancement {feature_id!r} cannot enhance itself")
+
+    # ---- feat-010 / D-054: superseded_by is a list of existing ids ----
+    if isinstance(superseded_by, str):
+        raw_supp = [s.strip() for s in superseded_by.split(",") if s.strip()]
+    else:
+        raw_supp = [str(s).strip() for s in (superseded_by or []) if str(s).strip()]
+    supp = list(dict.fromkeys(raw_supp))
+    for sid in supp:
+        if sid == feature_id:
+            fail(f"feature {feature_id!r} cannot supersede itself")
+        if sid not in known_ids:
+            fail(f"superseded_by references unknown feature: {sid!r}")
+    # Normalize the empty case to None so that the on-disk JSON uses
+    # `"superseded_by": null` instead of `"superseded_by": []`. Both
+    # read back as "not superseded" but null matches the spec wording
+    # (D-054: "nullable metadata field") and round-trips cleanly.
+    if not supp:
+        supp = None
+
+    # implementation_model is opaque — the daemon / feat-031 validates it
+    # against the named-config registry at drag-time. The library just
+    # stores the string. Empty string is normalized to None.
+
     new_feature = {
         "id": feature_id,
         "category": category,
@@ -371,6 +462,11 @@ def add(
         "priority": priority_norm,
         "depends_on": deps,
         "attempts": [],
+        "kind": kind_norm,
+        "fixes": fixes,
+        "enhances": enhances,
+        "superseded_by": supp,
+        "implementation_model": implementation_model or None,
     }
     data["features"].append(new_feature)
     recompute_metadata(data)
@@ -500,6 +596,14 @@ def next_feature(path: Path | str | None) -> str:
 
     Returns the chosen feature_id. Raises SystemExit (via fail) if no
     eligible feature exists.
+
+    Skips features with `superseded_by != null` (per D-054: features
+    replaced by a split/merge proposal are "treated as if absent from
+    the work graph" — they live in the Archive lane, not in the main
+    queue). Note that `superseded_by` does NOT auto-resolve their
+    depends_on edges; downstream features still see the original dep
+    as un-passing, which is the correct behaviour since the LLM-driven
+    split/merge flow (feat-054) is responsible for re-linking those.
     """
     data = load(path)
     candidates = []
@@ -507,6 +611,9 @@ def next_feature(path: Path | str | None) -> str:
         if status_of(f) != "pending":
             continue
         _ensure_extras(f)
+        if f.get("superseded_by"):
+            # Per D-054: skipped by next-feature.
+            continue
         deps = f.get("depends_on") or []
         deps_blocked = False
         for dep_id in deps:

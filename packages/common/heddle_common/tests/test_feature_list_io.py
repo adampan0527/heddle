@@ -312,5 +312,321 @@ class TestSchemaVersion(unittest.TestCase):
         self.assertGreaterEqual(fl.SCHEMA_VERSION, 1)
 
 
+class TestExtendedFields(unittest.TestCase):
+    """feat-010 — kind / fixes / enhances / superseded_by / implementation_model.
+
+    Covers every step in the feat-010 spec:
+
+      1. The five fields are added to the per-feature schema.
+      2. Defaults: kind=feature, all others None.
+      3. `save()` always writes all five fields (even null) so the on-disk
+         schema is always complete.
+      4. Validation in `add()`: kind=bugfix requires fixes + target exists;
+         kind=enhancement requires enhances + target exists.
+      5. Round-trip: a feature with kind=bugfix, fixes=feat-X reads back
+         with the same values.
+      6. Old-format JSON (no kind field) loads with kind defaulting to
+         "feature"; new-format JSON loads with all fields preserved.
+      7. `save()` + `load()` yields byte-identical JSON (modulo schema_version).
+    """
+
+    def setUp(self):
+        self.tmp = Path(sys.argv[0]).parent / "_test_extended_fields.json"
+        self.tmp.write_text(
+            json.dumps(
+                {
+                    "project_name": "ext-test",
+                    "description": "feat-010",
+                    "features": [
+                        {
+                            "id": "feat-existing",
+                            "category": "functional",
+                            "description": "existing",
+                            "steps": ["step 1"],
+                            "status": "pending",
+                            "priority": "high",
+                            "depends_on": [],
+                            "attempts": [],
+                        }
+                    ],
+                    "metadata": {},
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+    def tearDown(self):
+        if self.tmp.exists():
+            self.tmp.unlink()
+
+    # ---- step 1 + 2: fields exist + defaults ----
+
+    def test_load_backfills_defaults_for_old_format(self):
+        # The on-disk feature has no kind/fixes/etc. — defaults must
+        # be materialized in the loaded dict (so save() writes them).
+        data = fl.load(self.tmp)
+        feat = data["features"][0]
+        self.assertEqual(feat["kind"], "feature")
+        self.assertIsNone(feat["fixes"])
+        self.assertIsNone(feat["enhances"])
+        self.assertIsNone(feat["superseded_by"])
+        self.assertIsNone(feat["implementation_model"])
+
+    def test_load_preserves_existing_values(self):
+        # Round-trip: write kind=bugfix + fixes; load returns the same.
+        data = fl.load(self.tmp)
+        data["features"][0]["kind"] = "bugfix"
+        data["features"][0]["fixes"] = "feat-existing"
+        fl.save(self.tmp, data)
+
+        reloaded = fl.load(self.tmp)
+        feat = reloaded["features"][0]
+        self.assertEqual(feat["kind"], "bugfix")
+        self.assertEqual(feat["fixes"], "feat-existing")
+        self.assertIsNone(feat["enhances"])
+        self.assertIsNone(feat["superseded_by"])
+        self.assertIsNone(feat["implementation_model"])
+
+    # ---- step 3: save() always writes all five fields ----
+
+    def test_save_writes_all_five_fields_even_when_null(self):
+        data = fl.load(self.tmp)
+        # Add a feature with no extended fields populated.
+        fl.add(self.tmp, feature_id="feat-new", category="functional", description="new")
+        written = json.loads(self.tmp.read_text(encoding="utf-8"))
+        new_feat = next(f for f in written["features"] if f["id"] == "feat-new")
+        for key in ("kind", "fixes", "enhances", "superseded_by", "implementation_model"):
+            self.assertIn(key, new_feat, f"save() must always include {key!r}")
+        self.assertEqual(new_feat["kind"], "feature")
+        self.assertIsNone(new_feat["fixes"])
+        self.assertIsNone(new_feat["enhances"])
+        self.assertIsNone(new_feat["superseded_by"])
+        self.assertIsNone(new_feat["implementation_model"])
+
+    # ---- step 4: validation in add() ----
+
+    def test_add_bugfix_requires_fixes(self):
+        with self.assertRaises(SystemExit):
+            fl.add(
+                self.tmp,
+                feature_id="feat-bug",
+                category="functional",
+                description="a bugfix",
+                kind="bugfix",
+                # fixes missing
+            )
+
+    def test_add_bugfix_rejects_nonexistent_fixes_target(self):
+        with self.assertRaises(SystemExit):
+            fl.add(
+                self.tmp,
+                feature_id="feat-bug",
+                category="functional",
+                description="a bugfix",
+                kind="bugfix",
+                fixes="feat-does-not-exist",
+            )
+
+    def test_add_bugfix_rejects_self_target(self):
+        with self.assertRaises(SystemExit):
+            fl.add(
+                self.tmp,
+                feature_id="feat-existing",
+                category="functional",
+                description="self-fix",
+                kind="bugfix",
+                fixes="feat-existing",
+            )
+
+    def test_add_bugfix_with_valid_fixes_succeeds(self):
+        fl.add(
+            self.tmp,
+            feature_id="feat-bug",
+            category="functional",
+            description="a bugfix",
+            kind="bugfix",
+            fixes="feat-existing",
+        )
+        data = fl.load(self.tmp)
+        bug = next(f for f in data["features"] if f["id"] == "feat-bug")
+        self.assertEqual(bug["kind"], "bugfix")
+        self.assertEqual(bug["fixes"], "feat-existing")
+
+    def test_add_enhancement_requires_enhances(self):
+        with self.assertRaises(SystemExit):
+            fl.add(
+                self.tmp,
+                feature_id="feat-enh",
+                category="functional",
+                description="an enhancement",
+                kind="enhancement",
+                # enhances missing
+            )
+
+    def test_add_enhancement_rejects_nonexistent_target(self):
+        with self.assertRaises(SystemExit):
+            fl.add(
+                self.tmp,
+                feature_id="feat-enh",
+                category="functional",
+                description="enhancement",
+                kind="enhancement",
+                enhances="feat-nope",
+            )
+
+    def test_add_enhancement_with_valid_target_succeeds(self):
+        fl.add(
+            self.tmp,
+            feature_id="feat-enh",
+            category="functional",
+            description="an enhancement",
+            kind="enhancement",
+            enhances="feat-existing",
+        )
+        data = fl.load(self.tmp)
+        enh = next(f for f in data["features"] if f["id"] == "feat-enh")
+        self.assertEqual(enh["kind"], "enhancement")
+        self.assertEqual(enh["enhances"], "feat-existing")
+
+    def test_add_rejects_invalid_kind(self):
+        with self.assertRaises(SystemExit):
+            fl.add(
+                self.tmp,
+                feature_id="feat-x",
+                category="functional",
+                description="bad kind",
+                kind="not-a-kind",
+            )
+
+    def test_add_defaults_kind_to_feature_when_omitted(self):
+        fl.add(self.tmp, feature_id="feat-default", category="functional", description="d")
+        data = fl.load(self.tmp)
+        f = next(f for f in data["features"] if f["id"] == "feat-default")
+        self.assertEqual(f["kind"], "feature")
+
+    # ---- step 5: round-trip ----
+
+    def test_round_trip_preserves_all_five_fields(self):
+        fl.add(
+            self.tmp,
+            feature_id="feat-bug",
+            category="functional",
+            description="a bugfix",
+            kind="bugfix",
+            fixes="feat-existing",
+            implementation_model="anthropic-claude-sonnet",
+        )
+        # Reload, save, reload — values must survive two cycles.
+        fl.save(self.tmp, fl.load(self.tmp))
+        feat = next(
+            f for f in fl.load(self.tmp)["features"] if f["id"] == "feat-bug"
+        )
+        self.assertEqual(feat["kind"], "bugfix")
+        self.assertEqual(feat["fixes"], "feat-existing")
+        self.assertEqual(feat["implementation_model"], "anthropic-claude-sonnet")
+
+    # ---- step 6: old-format loads with kind=feature ----
+
+    def test_old_format_loads_with_kind_default(self):
+        # Rewrite the fixture without the kind field.
+        sample = json.loads(self.tmp.read_text(encoding="utf-8"))
+        for f in sample["features"]:
+            f.pop("kind", None)
+            f.pop("fixes", None)
+            f.pop("enhances", None)
+            f.pop("superseded_by", None)
+            f.pop("implementation_model", None)
+        self.tmp.write_text(json.dumps(sample, indent=2), encoding="utf-8")
+
+        data = fl.load(self.tmp)
+        feat = data["features"][0]
+        self.assertEqual(feat["kind"], "feature")
+        self.assertIsNone(feat["fixes"])
+        self.assertIsNone(feat["enhances"])
+        self.assertIsNone(feat["superseded_by"])
+        self.assertIsNone(feat["implementation_model"])
+
+    # ---- step 7: save() + load() round-trip is stable ----
+
+    def test_save_load_byte_identical_for_extended_feature(self):
+        # Add a feature with every extended field populated.
+        fl.add(
+            self.tmp,
+            feature_id="feat-full",
+            category="functional",
+            description="fully populated",
+            kind="bugfix",
+            fixes="feat-existing",
+            implementation_model="openai-gpt-4",
+        )
+        before = self.tmp.read_bytes()
+        # Round-trip via the library.
+        fl.save(self.tmp, fl.load(self.tmp))
+        after = self.tmp.read_bytes()
+        # After the first load+save the on-disk schema gained the five
+        # extended fields (and schema_version). A second load+save must
+        # be a no-op.
+        self.assertEqual(before, after)
+
+    # ---- superseded_by validation + next_feature skip (D-054) ----
+
+    def test_add_superseded_by_accepts_comma_separated_string(self):
+        # First add a target feature so superseded_by can reference it.
+        fl.add(self.tmp, feature_id="feat-replaced", category="functional", description="r")
+        fl.add(
+            self.tmp,
+            feature_id="feat-replacer",
+            category="functional",
+            description="new",
+            superseded_by="feat-replaced",
+        )
+        data = fl.load(self.tmp)
+        replacer = next(f for f in data["features"] if f["id"] == "feat-replacer")
+        self.assertEqual(replacer["superseded_by"], ["feat-replaced"])
+
+    def test_add_superseded_by_rejects_unknown_id(self):
+        with self.assertRaises(SystemExit):
+            fl.add(
+                self.tmp,
+                feature_id="feat-x",
+                category="functional",
+                description="x",
+                superseded_by=["feat-missing"],
+            )
+
+    def test_add_superseded_by_rejects_self(self):
+        with self.assertRaises(SystemExit):
+            fl.add(
+                self.tmp,
+                feature_id="feat-self",
+                category="functional",
+                description="self-supersede",
+                superseded_by=["feat-self"],
+            )
+
+    def test_next_feature_skips_superseded_features(self):
+        # feat-existing is pending. Add a superseded candidate first
+        # (alphabetically earlier). next_feature must skip it.
+        fl.add(
+            self.tmp,
+            feature_id="feat-aaa-superseded",
+            category="functional",
+            description="superseded; should be skipped",
+            superseded_by="feat-existing",
+        )
+        fl.add(
+            self.tmp,
+            feature_id="feat-zzz-not-superseded",
+            category="functional",
+            description="normal; should be picked",
+        )
+        # Make sure deps_passing is satisfied for both.
+        chosen = fl.next_feature(self.tmp)
+        # feat-aaa-superseded is alphabetically first but must be skipped.
+        self.assertNotEqual(chosen, "feat-aaa-superseded")
+        self.assertIn(chosen, {"feat-existing", "feat-zzz-not-superseded"})
+
+
 if __name__ == "__main__":
     unittest.main()

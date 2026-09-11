@@ -201,7 +201,7 @@
         "Test: old-format JSON without kind loads with kind defaulting to feature; new-format JSON loads with all fields preserved",
         "Test: save() then load() yields byte-identical JSON (modulo schema_version)"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "priority": "high",
       "depends_on": [
         "feat-009"
@@ -1100,7 +1100,7 @@
     "total_features": 56,
     "passing": 6,
     "failing": 50,
-    "in_progress": 0,
+    "in_progress": 1,
     "blocked": 1,
     "deferred": 1,
     "last_updated": "2026-09-12"
