@@ -82,3 +82,20 @@ from .projects_io import (  # noqa: F401
     save_projects,
     touch_project,
 )
+
+# Re-export the env_loader API so callers can do
+# `from heddle_common import load_env_file` etc. Both the CLI
+# (`heddle start` / `heddle env status`) and the daemon bootstrap
+# call load_env_file() once at startup to merge ~/.heddle/.env
+# into the process environment (T-015, feat-013).
+from .env_loader import (  # noqa: F401
+    DEFAULT_ENV_DIR,
+    DEFAULT_ENV_PATH,
+    DEFAULT_GITIGNORE_PATH,
+    EnvParseError,
+    EnvPermissionError,
+    describe as describe_env,
+    ensure_env_loader,
+    load_env_file,
+    parse_env_lines,
+)
