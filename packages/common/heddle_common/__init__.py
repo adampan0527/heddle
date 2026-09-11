@@ -59,3 +59,26 @@ from .configs_io import (  # noqa: F401
     save_configs,
     update_config,
 )
+
+# Re-export the projects_io API so callers can do
+# `from heddle_common import Project, add_project` etc. The CLI
+# `heddle projects add | list | remove` command (feat-050 +
+# feat-012) and the daemon's per-project bootstrap (feat-014 /
+# feat-018) both import from this surface.
+from .projects_io import (  # noqa: F401
+    DEFAULT_PROJECTS_DIR,
+    DEFAULT_PROJECTS_PATH,
+    MAX_PROJECTS,
+    MAX_PROJECTS_BYTES,
+    PROJECTS_SCHEMA_VERSION,
+    PROJECTS_SCHEMA_VERSION_MAX,
+    Project,
+    ProjectsError,
+    add_project,
+    default_projects_path,
+    list_projects,
+    load_projects,
+    remove_project,
+    save_projects,
+    touch_project,
+)

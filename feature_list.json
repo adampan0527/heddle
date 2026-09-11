@@ -310,12 +310,20 @@
         "Test: add a project pointing at a real directory; assert projects.json has the entry",
         "Test: remove a project; assert projects.json no longer has the entry and the log files are gone"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-008"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-012",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1402,8 +1410,8 @@
   ],
   "metadata": {
     "total_features": 56,
-    "passing": 9,
-    "failing": 47,
+    "passing": 10,
+    "failing": 46,
     "in_progress": 0,
     "blocked": 1,
     "deferred": 1,
