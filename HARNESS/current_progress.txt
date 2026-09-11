@@ -51,21 +51,21 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 
 ### SESSION 1 — 2026-09-12
 
-**Worked on:** feat-003 (monorepo skeleton); feat-004 (Apache 2.0 LICENSE + SPDX headers); feat-005 (structured JSON logging + redaction)
+**Worked on:** feat-003 (monorepo skeleton); feat-004 (LICENSE+SPDX); feat-005 (logging); feat-008 (feature_list_io library extraction, T-014)
 
 **Status:** Implemented and tested
 
-**Features now passing:** feat-003, feat-004, feat-005 (3 / 56 total)
+**Features now passing:** feat-003, feat-004, feat-005, feat-008 (4 / 56 total)
 
-**Notes:** feat-003: pnpm install (68 pkgs), pip install -e . OK, heddle 0.0.1, Vite HTTP 200 on 127.0.0.1:5173. feat-004: LICENSE (Apache 2.0), SPDX-Apache-2.0 in 7 packages/* files, scripts/check_spdx_headers.py exits 0. feat-005: heddle_common Python package added, heddle_common/logging.py with redact() (case+underscore-insensitive on api_key/secret/token) + 13 unittest tests pass; packages/web/src/lib/logger.ts with 12 node:test tests pass. Added @types/node devDep. Total 25 tests across Python+TS.
+**Notes:** feat-008: Ported HARNESS feature_list logic to packages/common/heddle_common/feature_list_io.py (and atomic_io.py). HARNESS/tools/_feature_io.py + _feature_state.py are now thin re-exports. feature_list.py CLI dispatches through the shims with no source change. Verified: feature_list.py status byte-identical before/after; handoff_check.py output byte-identical (also fixed an unrelated Windows bug where it used 'python' instead of sys.executable); load+save round-trip byte-identical. 12 new unittest tests pass for feature_list_io. Total: 25 (logging) + 12 (feature_list_io) = 37 tests across Python+TS.
 
 ---
 
 SUMMARY
 -------
 Total features: 56
-Passing: 3
-Failing: 53
+Passing: 4
+Failing: 52
 In progress: 0
 Blocked: 1
 Deferred: 1

@@ -198,7 +198,7 @@ def _run_status() -> tuple[bool, dict[str, str]]:
     formatter.
     """
     proc = subprocess.run(
-        ["python", str(TOOLS_DIR / "feature_list.py"), "status"],
+        [sys.executable, str(TOOLS_DIR / "feature_list.py"), "status"],
         cwd=str(PROJECT_ROOT),
         capture_output=True,
         text=True,
