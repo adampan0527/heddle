@@ -51,21 +51,21 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 
 ### SESSION 1 — 2026-09-12
 
-**Worked on:** feat-003 — Monorepo skeleton (pnpm workspaces + setuptools umbrella + packages/{web,cli,daemon}); feat-004 — Apache 2.0 LICENSE + SPDX-License-Identifier headers
+**Worked on:** feat-003 (monorepo skeleton); feat-004 (Apache 2.0 LICENSE + SPDX headers); feat-005 (structured JSON logging + redaction)
 
 **Status:** Implemented and tested
 
-**Features now passing:** feat-003, feat-004 (2 / 56 total)
+**Features now passing:** feat-003, feat-004, feat-005 (3 / 56 total)
 
-**Notes:** feat-003: pnpm install OK (68 packages), pip install -e . OK, heddle --version 0.0.1, pnpm --filter web dev (Vite HTTP 200 on 127.0.0.1:5173), both Python packages importable, TypeScript typecheck clean. feat-004: LICENSE (Apache 2.0) at root, SPDX-Apache-2.0 headers in 7 packages/* source files, README has License section + HARNESS MIT notice, scripts/check_spdx_headers.py asserts coverage and exits 0. HARNESS/ kept MIT (vendored Anthropic harness). Git initialized with design docs as first commit.
+**Notes:** feat-003: pnpm install (68 pkgs), pip install -e . OK, heddle 0.0.1, Vite HTTP 200 on 127.0.0.1:5173. feat-004: LICENSE (Apache 2.0), SPDX-Apache-2.0 in 7 packages/* files, scripts/check_spdx_headers.py exits 0. feat-005: heddle_common Python package added, heddle_common/logging.py with redact() (case+underscore-insensitive on api_key/secret/token) + 13 unittest tests pass; packages/web/src/lib/logger.ts with 12 node:test tests pass. Added @types/node devDep. Total 25 tests across Python+TS.
 
 ---
 
 SUMMARY
 -------
 Total features: 56
-Passing: 2
-Failing: 54
+Passing: 3
+Failing: 53
 In progress: 0
 Blocked: 1
 Deferred: 1

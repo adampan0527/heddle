@@ -10,6 +10,7 @@ requires-python = ">=3.11"
 authors = [{name = "heddle contributors"}]
 license = {text = "Apache-2.0"}
 dependencies = [
+    "heddle-common",
     "langgraph>=0.2",
     "langchain-core>=0.3",
 ]

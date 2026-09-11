@@ -17,6 +17,6 @@ dependencies = [
 heddle = "heddle_cli.__main__:cli"
 
 [tool.setuptools.packages.find]
-where = ["packages/cli", "packages/daemon"]
-include = ["heddle_cli*", "heddle_daemon*"]
+where = ["packages/cli", "packages/daemon", "packages/common"]
+include = ["heddle_cli*", "heddle_daemon*", "heddle_common*"]
 exclude = ["tests*"]

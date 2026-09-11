@@ -3,18 +3,15 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "heddle-cli"
+name = "heddle-common"
 version = "0.0.1"
-description = "heddle CLI — start/dev/test/lint subcommands (standalone installable; root pyproject.toml also installs this)"
+description = "Shared Python library for heddle CLI and daemon (logging, schema, constants)"
 requires-python = ">=3.11"
 authors = [{name = "heddle contributors"}]
 license = {text = "Apache-2.0"}
-dependencies = [
-    "heddle-common",
-    "click>=8.0",
-]
+dependencies = []
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["heddle_cli*"]
+include = ["heddle_common*"]
 exclude = ["tests*"]
