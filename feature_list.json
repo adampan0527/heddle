@@ -172,7 +172,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 2,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-009",
