@@ -7,6 +7,8 @@ Per TECH.md T-014. Sub-modules:
   (T-014, T-022 / feat-009)
 - fake_llm: scripted-response LLM used when HEDDLE_FAKE_LLM is set
   (feat-007 / T-018, T-031)
+- configs_io: read/write/manage `~/.heddle/configs.yaml` (feat-011 /
+  T-023, D-053, D-055, T-015)
 """
 
 __version__ = "0.0.1"
@@ -32,4 +34,28 @@ from .fake_llm import (  # noqa: F401
     fake_llm_or_real,
     is_fake_llm_enabled,
     load_fixture,
+)
+
+# Re-export the configs_io API so callers can do
+# `from heddle_common import Config, load_configs` etc. The CLI
+# `heddle configs list` command and the daemon's LLM config
+# resolution (feat-023, feat-031) both import from this surface.
+from .configs_io import (  # noqa: F401
+    ALLOWED_PROVIDERS,
+    DEFAULT_CONFIG_DIR,
+    DEFAULT_CONFIG_PATH,
+    DEFAULT_TEMPLATES,
+    Config,
+    ConfigsError,
+    add_config,
+    default_configs_path,
+    delete_config,
+    ensure_configs,
+    get_config,
+    list_configs,
+    load_configs,
+    resolve_api_key,
+    resolve_api_key_for_config,
+    save_configs,
+    update_config,
 )

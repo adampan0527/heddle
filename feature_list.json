@@ -278,7 +278,7 @@
         "CLI command `heddle configs list` prints the four templates with their filled values",
         "Test: delete ~/.heddle/configs.yaml; run heddle; assert the file is recreated with the four defaults"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "priority": "high",
       "depends_on": [
         "feat-008"
@@ -1388,7 +1388,7 @@
     "total_features": 56,
     "passing": 7,
     "failing": 49,
-    "in_progress": 0,
+    "in_progress": 1,
     "blocked": 1,
     "deferred": 1,
     "last_updated": "2026-09-12"

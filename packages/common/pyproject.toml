@@ -9,7 +9,13 @@ description = "Shared Python library for heddle CLI and daemon (logging, schema,
 requires-python = ">=3.11"
 authors = [{name = "heddle contributors"}]
 license = {text = "Apache-2.0"}
-dependencies = []
+dependencies = [
+    # YAML reader/writer for ~/.heddle/configs.yaml (feat-011 / D-055 / T-023).
+    # PyYAML is the de-facto standard, ships pure-Python fallback so no
+    # libyaml build dep, ~700 KB install footprint. The daemon and CLI
+    # both parse this file via heddle_common.configs_io.
+    "PyYAML>=6.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
