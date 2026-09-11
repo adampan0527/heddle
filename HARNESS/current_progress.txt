@@ -63,13 +63,13 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 
 ### SESSION 2 — 2026-09-12
 
-**Worked on:** feat-009 @ 945cc90 — implement schema_version field on feature_list.json (T-022)
+**Worked on:** feat-009 @ 945cc90 — implement schema_version field on feature_list.json (T-022); follow-up @ 8c0d4c6 — fill in CODE_STYLE.md Part 2
 
 **Status:** Implemented and tested
 
 **Features now passing:** feat-009 (5 / 56 total)
 
-**Notes:** feat-009: Added SCHEMA_VERSION=1, SCHEMA_VERSION_MAX=1, and SchemaVersionError to heddle_common/feature_list_io.py. load() defaults missing schema_version to 0; refuses versions above SCHEMA_VERSION_MAX with a clear "please upgrade heddle" message; rejects non-int / negative values. save() always stamps SCHEMA_VERSION so legacy files migrate in place. Migrated both feature_list.json (root) and HARNESS/feature_list.json to schema_version=1. Re-exported SCHEMA_VERSION / SCHEMA_VERSION_MAX / SchemaVersionError from package init. HARNESS/tools/feature_list.py works unchanged (auto-inherits via shim). Updated TestRoundTrip; added TestSchemaVersion class (7 new tests). 32/32 unittest pass. feat-010, feat-016 now unblocked.
+**Notes:** feat-009: Added SCHEMA_VERSION=1, SCHEMA_VERSION_MAX=1, and SchemaVersionError to heddle_common/feature_list_io.py. load() defaults missing schema_version to 0; refuses versions above SCHEMA_VERSION_MAX with a clear "please upgrade heddle" message; rejects non-int / negative values. save() always stamps SCHEMA_VERSION so legacy files migrate in place. Migrated both feature_list.json (root) and HARNESS/feature_list.json to schema_version=1. Re-exported SCHEMA_VERSION / SCHEMA_VERSION_MAX / SchemaVersionError from package init. HARNESS/tools/feature_list.py works unchanged (auto-inherits via shim). Updated TestRoundTrip; added TestSchemaVersion class (7 new tests). 32/32 unittest pass. feat-010, feat-016 now unblocked. Follow-up: filled in 27 [fill-in] placeholders in CODE_STYLE.md Part 2 (handoff_check code_style_fillins was the only pre-existing failure). Part 1 untouched. handoff_check now 10/10 PASS.
 
 ---
 
