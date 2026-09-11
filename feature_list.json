@@ -140,7 +140,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 6,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-006",
@@ -325,7 +325,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 6,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-012",
@@ -358,7 +358,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 6,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-013",
@@ -434,7 +434,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 6,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-016",
@@ -467,7 +467,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 6,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-017",

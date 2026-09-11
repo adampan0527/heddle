@@ -112,9 +112,22 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 SUMMARY
 -------
 Total features: 56
-Passing: 8
-Failing: 48
+Passing: 13
+Failing: 43
 In progress: 0
 Blocked: 1
 Deferred: 1
 Last updated: 2026-09-12
+
+### SESSION 6 — 2026-09-12
+
+**Worked on:** feat-016 @ f2b120e — backward-compat tests for feature_list_io; feat-012 @ fbd6b54 — ~/.heddle/projects.json registry; feat-013 @ a98f8a4 — ~/.heddle/.env fallback loader; feat-006 @ 576550b — GitHub Actions CI workflows; feat-017 @ 7894095 — Python daemon skeleton (asyncio + websockets)
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-016, feat-012, feat-013, feat-006, feat-017 (13 / 56 total)
+
+**Notes:** 5 features across 5 commits. feat-016: tests/fixtures/old-harness-format.json + TestBackwardCompat (5 tests). feat-012: heddle_common/projects_io.py (Project dataclass, schema_version gate, add_project validates path exists, remove_project cascade deferred to feat-014) + 21 tests. feat-013: heddle_common/env_loader.py (parse_env_lines, load_env_file, ensure_env_loader writes .gitignore ONLY; EnvPermissionError on group/world-readable POSIX files, skipped on Windows ACLs) + 23 tests. feat-006: ci.yml (PR+push-to-main, matrix ubuntu/macos/windows, HEDDLE_FAKE_LLM=1, lockfile-keyed pnpm + per-package pip cache) + nightly.yml (cron 02:17 UTC, LIVE_LLM_TESTS-gated) + 13 ci-workflow tests. feat-017: packages/daemon/heddle_daemon/server.py (DaemonConfig loopback-only with clear error, JsonEnvelope per T-010, Daemon class with two-phase start+serve_forever, signal handlers, port-conflict OSError, websockets>=12.0) + __main__.py + 30 daemon tests (handshake, port-conflict, handler errors, version gate). 226/226 cross-package tests pass (163 heddle_common + 30 daemon + 13 ci-workflow + 20 prior passing feat; 3 POSIX-only env perm tests skipped on Windows). handoff_check 10/10. feat-014, feat-018, feat-023, feat-027, feat-028, feat-030, feat-052 unblocked.
+
+---
+
