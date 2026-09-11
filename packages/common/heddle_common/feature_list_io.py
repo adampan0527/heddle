@@ -49,6 +49,32 @@ VALID_CATEGORIES: Final[frozenset[str]] = frozenset({
 VALID_PRIORITIES: Final[frozenset[str]] = frozenset({"high", "medium", "low"})
 VALID_ATTEMPT_OUTCOMES: Final[tuple[str, ...]] = ("passing", "blocked", "deferred", "regressed")
 
+# ---------- feature_list.json schema version (T-022 / feat-009) ----------
+#
+# `feature_list.json` carries a top-level `schema_version: <int>` field.
+# On read, a missing field is treated as version 0 (legacy, pre-v1 files).
+# On write, the current SCHEMA_VERSION is always stamped so any subsequent
+# read round-trips cleanly.
+#
+# `SCHEMA_VERSION_MAX` is the highest version this build of heddle_common
+# understands. Bump it whenever a newer build reads an older file with
+# new optional fields it does not yet know how to handle. Loading a file
+# whose `schema_version` exceeds `SCHEMA_VERSION_MAX` raises
+# `SchemaVersionError` so the caller can show the user an actionable
+# "please upgrade heddle" message instead of silently corrupting data.
+SCHEMA_VERSION: Final[int] = 1
+SCHEMA_VERSION_MAX: Final[int] = 1
+
+
+class SchemaVersionError(Exception):
+    """Raised when `feature_list.json` carries a `schema_version` this build cannot read.
+
+    The error message includes both the file's version and this build's
+    `SCHEMA_VERSION_MAX`, plus a hint about how to recover (upgrade heddle,
+    or migrate the file down with a future `heddle migrate` subcommand).
+    """
+
+
 BLOCK_REASON_MIN_CHARS: Final[int] = 5
 REGRESS_REASON_MIN_CHARS: Final[int] = 10
 PRIORITY_RANK: Final[dict[str, int]] = {"high": 0, "medium": 1, "low": 2}
@@ -88,6 +114,14 @@ def load(path: Path | str | None = None) -> dict[str, Any]:
 
     Validates that the file exists and parses as JSON; that a top-level
     `features` array is present. Calls `fail()` (which exits 1) on error.
+
+    Per T-022 / feat-009:
+      - A top-level `schema_version` is required in the loaded dict. If the
+        file omits it, the dict is stamped with `schema_version = 0` to
+        mark the legacy form. (Saving back via `save()` then promotes it
+        to `SCHEMA_VERSION`.)
+      - If `schema_version > SCHEMA_VERSION_MAX`, `SchemaVersionError` is
+        raised with a message naming both versions and a recovery hint.
     """
     p = _resolve_path(path)
     if not p.exists():
@@ -98,12 +132,43 @@ def load(path: Path | str | None = None) -> dict[str, Any]:
         fail(f"{p} is not valid JSON: {exc}")
     if "features" not in data or not isinstance(data["features"], list):
         fail(f"{p} must contain a 'features' array.")
+
+    raw_version = data.get("schema_version")
+    if raw_version is None:
+        # Legacy file predates the schema_version field. Treat as v0
+        # internally; the next save() promotes it to SCHEMA_VERSION.
+        data["schema_version"] = 0
+    elif isinstance(raw_version, bool) or not isinstance(raw_version, int):
+        fail(
+            f"{p} has a non-integer schema_version: {raw_version!r} "
+            f"(type={type(raw_version).__name__}); fix the file by hand."
+        )
+    elif raw_version < 0:
+        fail(
+            f"{p} has a negative schema_version: {raw_version}; "
+            "fix the file by hand."
+        )
+    elif raw_version > SCHEMA_VERSION_MAX:
+        raise SchemaVersionError(
+            f"{p} has schema_version={raw_version} but this build of "
+            f"heddle_common supports at most schema_version="
+            f"{SCHEMA_VERSION_MAX}. Please upgrade heddle, or run "
+            f"`heddle migrate {raw_version} {SCHEMA_VERSION_MAX}` once "
+            f"that subcommand is available."
+        )
     return data
 
 
 def save(path: Path | str | None, data: dict[str, Any]) -> None:
-    """Atomically write `data` to feature_list.json at `path`."""
+    """Atomically write `data` to feature_list.json at `path`.
+
+    Always stamps the current `SCHEMA_VERSION` into the written payload
+    (per T-022 / feat-009), regardless of what `data["schema_version"]`
+    held on the way in. This means a load + save cycle migrates legacy
+    (schema_version=0) files to schema_version=1 in place.
+    """
     p = _resolve_path(path)
+    data["schema_version"] = SCHEMA_VERSION
     atomic_io.atomic_write_json(p, data, indent=INDENT, ensure_ascii=False)
 
 

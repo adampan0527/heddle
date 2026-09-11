@@ -15,12 +15,40 @@ HARNESS_FEATURE_LIST = REPO_ROOT / "HARNESS" / "feature_list.json"
 
 
 class TestRoundTrip(unittest.TestCase):
-    def test_load_then_save_round_trip_is_byte_identical(self):
-        original_bytes = HARNESS_FEATURE_LIST.read_bytes()
-        data = fl.load(HARNESS_FEATURE_LIST)
-        fl.save(HARNESS_FEATURE_LIST, data)
-        new_bytes = HARNESS_FEATURE_LIST.read_bytes()
-        self.assertEqual(original_bytes, new_bytes, "round-trip must be byte-identical")
+    def test_load_then_save_round_trip_stamps_schema_version(self):
+        """feat-009: load+save migrates a legacy file to schema_version=1 in place.
+
+        Pre-feat-009 behavior (byte-identical round-trip) is intentionally
+        broken: every save() call must stamp the current SCHEMA_VERSION so
+        downstream readers can refuse too-new files with a clear error.
+
+        The test uses a temp file rather than HARNESS_FEATURE_LIST because
+        once that file is migrated, further load+save cycles on it are
+        no-ops; we need a fresh legacy file to exercise the migration path.
+        """
+        legacy = Path(sys.argv[0]).parent / "_test_legacy_feature_list.json"
+        # Strip schema_version from a copy of the real HARNESS template.
+        sample = json.loads(HARNESS_FEATURE_LIST.read_text(encoding="utf-8"))
+        sample.pop("schema_version", None)
+        legacy.write_text(json.dumps(sample, indent=2) + "\n", encoding="utf-8")
+        try:
+            original_bytes = legacy.read_bytes()
+            data = fl.load(legacy)
+            # After load(), a missing field is materialized as 0 (legacy sentinel).
+            self.assertEqual(data["schema_version"], 0)
+            fl.save(legacy, data)
+            new_bytes = legacy.read_bytes()
+            self.assertNotEqual(
+                original_bytes,
+                new_bytes,
+                "round-trip must NOT be byte-identical once schema_version is stamped",
+            )
+            # After save(), the on-disk schema_version equals SCHEMA_VERSION.
+            parsed = json.loads(new_bytes.decode("utf-8"))
+            self.assertEqual(parsed["schema_version"], fl.SCHEMA_VERSION)
+        finally:
+            if legacy.exists():
+                legacy.unlink()
 
     def test_recompute_metadata_preserves_keys(self):
         data = fl.load(HARNESS_FEATURE_LIST)
@@ -155,6 +183,133 @@ class TestMutations(unittest.TestCase):
         meta = fl.load(self.tmp)["metadata"]
         self.assertEqual(meta["total_features"], 1)
         self.assertEqual(meta["passing"], 1)
+
+
+class TestSchemaVersion(unittest.TestCase):
+    """feat-009 / T-022 — top-level `schema_version` field on feature_list.json.
+
+    Scenarios from the feat-009 steps array:
+
+      1. load() an old file (no schema_version) -> dict has schema_version=0
+         internally, then save() rewrites it as schema_version=1.
+      2. load() a file with schema_version > SCHEMA_VERSION_MAX
+         -> SchemaVersionError with a clear, actionable message.
+      3. save() always stamps the current SCHEMA_VERSION, regardless of
+         what the dict held on the way in.
+    """
+
+    def setUp(self):
+        self.tmp = Path(sys.argv[0]).parent / "_test_schema_version.json"
+
+    def tearDown(self):
+        if self.tmp.exists():
+            self.tmp.unlink()
+
+    def _write(self, payload: dict) -> None:
+        self.tmp.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+
+    def _minimal_payload(self) -> dict:
+        return {
+            "project_name": "sv-test",
+            "description": "schema_version test",
+            "features": [
+                {
+                    "id": "feat-x",
+                    "category": "functional",
+                    "description": "x",
+                    "steps": ["step 1"],
+                    "status": "pending",
+                    "priority": "medium",
+                    "depends_on": [],
+                    "attempts": [],
+                }
+            ],
+            "metadata": {},
+        }
+
+    def test_legacy_file_loads_with_default_zero_then_save_promotes(self):
+        # File on disk has NO schema_version (legacy form).
+        self._write(self._minimal_payload())
+        raw = json.loads(self.tmp.read_text(encoding="utf-8"))
+        self.assertNotIn("schema_version", raw)
+
+        data = fl.load(self.tmp)
+        # Internal in-memory representation gets the legacy sentinel.
+        self.assertEqual(data["schema_version"], 0)
+
+        # Save promotes the on-disk value to the current SCHEMA_VERSION.
+        fl.save(self.tmp, data)
+        written = json.loads(self.tmp.read_text(encoding="utf-8"))
+        self.assertEqual(written["schema_version"], fl.SCHEMA_VERSION)
+        # And the in-memory dict now also reflects the stamped value.
+        self.assertEqual(data["schema_version"], fl.SCHEMA_VERSION)
+
+    def test_future_schema_version_raises_clear_error(self):
+        payload = self._minimal_payload()
+        # Pick a value strictly greater than SCHEMA_VERSION_MAX so the
+        # refusal branch is exercised regardless of how MAX moves later.
+        payload["schema_version"] = fl.SCHEMA_VERSION_MAX + 100
+        self._write(payload)
+
+        with self.assertRaises(fl.SchemaVersionError) as ctx:
+            fl.load(self.tmp)
+        msg = str(ctx.exception)
+        # Error must name BOTH versions and a recovery hint.
+        self.assertIn(str(payload["schema_version"]), msg)
+        self.assertIn(str(fl.SCHEMA_VERSION_MAX), msg)
+        self.assertIn("upgrade heddle", msg.lower())
+
+    def test_save_overwrites_stale_schema_version(self):
+        # File on disk has an old (but valid) schema_version; the in-memory
+        # value is mutated lower; save() must still stamp SCHEMA_VERSION.
+        payload = self._minimal_payload()
+        payload["schema_version"] = 0
+        self._write(payload)
+
+        data = fl.load(self.tmp)
+        self.assertEqual(data["schema_version"], 0)
+
+        # Mutate downward — save() must not propagate this.
+        data["schema_version"] = -5
+        fl.save(self.tmp, data)
+
+        written = json.loads(self.tmp.read_text(encoding="utf-8"))
+        self.assertEqual(written["schema_version"], fl.SCHEMA_VERSION)
+
+    def test_non_integer_schema_version_fails_loud(self):
+        payload = self._minimal_payload()
+        payload["schema_version"] = "1"  # string, not int
+        self._write(payload)
+
+        with self.assertRaises(SystemExit):
+            fl.load(self.tmp)
+
+    def test_boolean_schema_version_rejected_as_non_integer(self):
+        # `bool` is a subclass of `int` in Python; the load() code explicitly
+        # rejects booleans so a stray `True` cannot sneak through as 1.
+        payload = self._minimal_payload()
+        payload["schema_version"] = True
+        self._write(payload)
+
+        with self.assertRaises(SystemExit):
+            fl.load(self.tmp)
+
+    def test_negative_schema_version_fails_loud(self):
+        payload = self._minimal_payload()
+        payload["schema_version"] = -1
+        self._write(payload)
+
+        with self.assertRaises(SystemExit):
+            fl.load(self.tmp)
+
+    def test_schema_version_constants_are_sane(self):
+        # Defensive: SCHEMA_VERSION_MAX must be >= SCHEMA_VERSION (otherwise
+        # the loaded file can never be at-or-below MAX and every load fails).
+        self.assertGreaterEqual(fl.SCHEMA_VERSION_MAX, fl.SCHEMA_VERSION)
+        self.assertGreaterEqual(fl.SCHEMA_VERSION, 1)
 
 
 if __name__ == "__main__":

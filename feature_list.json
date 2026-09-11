@@ -54,18 +54,9 @@
         "Run `pnpm --filter web dev` and verify Vite dev server starts on 5173"
       ],
       "status": "passing",
-      "attempts": [
-        {
-          "session": 1,
-          "by": "coding-agent",
-          "outcome": "passing",
-          "note": "monorepo skeleton built: pnpm-workspace.yaml, root pyproject.toml (setuptools umbrella), packages/web (React+Vite+TS), packages/cli (click), packages/daemon (langgraph+langchain-core). `pnpm install` OK (68 packages); `pip install -e .` OK; `heddle --version` returns 0.0.1; `pnpm --filter web dev` starts Vite on 127.0.0.1:5173 with HTTP 200. Both heddle_cli and heddle_daemon importable. Typecheck clean.",
-          "at": "2026-09-12"
-        }
-      ],
+      "attempts": [],
       "priority": "high",
-      "depends_on": [],
-      "attempts": []
+      "depends_on": []
     },
     {
       "id": "feat-004",
@@ -80,18 +71,11 @@
         "Run a script that asserts every .py/.ts/.tsx under packages/* contains the SPDX header; script exits 0"
       ],
       "status": "passing",
-      "attempts": [
-        {
-          "session": 1,
-          "by": "coding-agent",
-          "outcome": "passing",
-          "note": "LICENSE (Apache 2.0 full text) at root; SPDX headers in all 7 packages/* source files; README has License section + HARNESS MIT notice; scripts/check_spdx_headers.py asserts coverage and exits 0. HARNESS/ left alone (MIT per HARNESS/README.md).",
-          "at": "2026-09-12"
-        }
-      ],
+      "attempts": [],
       "priority": "high",
-      "depends_on": ["feat-003"],
-      "attempts": []
+      "depends_on": [
+        "feat-003"
+      ]
     },
     {
       "id": "feat-005",
@@ -105,18 +89,11 @@
         "Unit test: emit 100 events in rapid succession; assert each is on its own line and parseable as JSON"
       ],
       "status": "passing",
-      "attempts": [
-        {
-          "session": 1,
-          "by": "coding-agent",
-          "outcome": "passing",
-          "note": "Python: packages/common/heddle_common/logging.py + 13 unittest tests (all pass). TS: packages/web/src/lib/logger.ts + 12 node:test tests (all pass). Both redact api_key/secret/token case+underscore-insensitive. Root pyproject.toml + packages/{cli,daemon}/pyproject.toml updated to include heddle-common dep. Added @types/node devDep.",
-          "at": "2026-09-12"
-        }
-      ],
+      "attempts": [],
       "priority": "high",
-      "depends_on": ["feat-003"],
-      "attempts": []
+      "depends_on": [
+        "feat-003"
+      ]
     },
     {
       "id": "feat-006",
@@ -132,7 +109,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-003", "feat-007"],
+      "depends_on": [
+        "feat-003",
+        "feat-007"
+      ],
       "attempts": []
     },
     {
@@ -148,7 +128,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-003"],
+      "depends_on": [
+        "feat-003"
+      ],
       "attempts": []
     },
     {
@@ -164,18 +146,11 @@
         "Run a round-trip test: load() then save() the same JSON; bytes are identical"
       ],
       "status": "passing",
-      "attempts": [
-        {
-          "session": 1,
-          "by": "coding-agent",
-          "outcome": "passing",
-          "note": "Ported all logic to packages/common/heddle_common/feature_list_io.py + atomic_io.py. HARNESS/tools/_feature_io.py and _feature_state.py now thin shims re-exporting from heddle_common. feature_list.py dispatches via the shims (no change to that file needed). Verified: feature_list.py status byte-identical before/after; handoff_check.py output byte-identical (after fixing unrelated Windows subprocess Python-path issue in handoff_check); load+save round-trip byte-identical. 12 new unittest tests pass.",
-          "at": "2026-09-12"
-        }
-      ],
+      "attempts": [],
       "priority": "high",
-      "depends_on": ["feat-003"],
-      "attempts": []
+      "depends_on": [
+        "feat-003"
+      ]
     },
     {
       "id": "feat-009",
@@ -190,10 +165,20 @@
         "Test: load an old file without schema_version; assert loaded dict has schema_version=0 internally and 1 on disk after save",
         "Test: load a file with schema_version=999; assert SchemaVersionError is raised with clear message"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
-      "depends_on": ["feat-008"],
-      "attempts": []
+      "depends_on": [
+        "feat-008"
+      ],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-009",
+          "at": "2026-09-12"
+        }
+      ]
     },
     {
       "id": "feat-010",
@@ -210,7 +195,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-009"],
+      "depends_on": [
+        "feat-009"
+      ],
       "attempts": []
     },
     {
@@ -227,7 +214,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-008"],
+      "depends_on": [
+        "feat-008"
+      ],
       "attempts": []
     },
     {
@@ -244,7 +233,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-008"],
+      "depends_on": [
+        "feat-008"
+      ],
       "attempts": []
     },
     {
@@ -262,7 +253,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-008"],
+      "depends_on": [
+        "feat-008"
+      ],
       "attempts": []
     },
     {
@@ -277,7 +270,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-012", "feat-018"],
+      "depends_on": [
+        "feat-012",
+        "feat-018"
+      ],
       "attempts": []
     },
     {
@@ -292,7 +288,9 @@
       ],
       "status": "pending",
       "priority": "medium",
-      "depends_on": ["feat-005"],
+      "depends_on": [
+        "feat-005"
+      ],
       "attempts": []
     },
     {
@@ -307,7 +305,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-009", "feat-010"],
+      "depends_on": [
+        "feat-009",
+        "feat-010"
+      ],
       "attempts": []
     },
     {
@@ -324,7 +325,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-005", "feat-008"],
+      "depends_on": [
+        "feat-005",
+        "feat-008"
+      ],
       "attempts": []
     },
     {
@@ -340,7 +344,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-017"],
+      "depends_on": [
+        "feat-017"
+      ],
       "attempts": []
     },
     {
@@ -356,7 +362,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-018", "feat-021"],
+      "depends_on": [
+        "feat-018",
+        "feat-021"
+      ],
       "attempts": []
     },
     {
@@ -375,7 +384,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-019"],
+      "depends_on": [
+        "feat-019"
+      ],
       "attempts": []
     },
     {
@@ -392,7 +403,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-020"],
+      "depends_on": [
+        "feat-020"
+      ],
       "attempts": []
     },
     {
@@ -409,7 +422,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-019"],
+      "depends_on": [
+        "feat-019"
+      ],
       "attempts": []
     },
     {
@@ -425,7 +440,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-011", "feat-013"],
+      "depends_on": [
+        "feat-011",
+        "feat-013"
+      ],
       "attempts": []
     },
     {
@@ -441,7 +459,10 @@
       ],
       "status": "pending",
       "priority": "medium",
-      "depends_on": ["feat-018", "feat-029"],
+      "depends_on": [
+        "feat-018",
+        "feat-029"
+      ],
       "attempts": []
     },
     {
@@ -457,7 +478,10 @@
       ],
       "status": "pending",
       "priority": "medium",
-      "depends_on": ["feat-005", "feat-015"],
+      "depends_on": [
+        "feat-005",
+        "feat-015"
+      ],
       "attempts": []
     },
     {
@@ -474,7 +498,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-003", "feat-005"],
+      "depends_on": [
+        "feat-003",
+        "feat-005"
+      ],
       "attempts": []
     },
     {
@@ -491,7 +518,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-017", "feat-026"],
+      "depends_on": [
+        "feat-017",
+        "feat-026"
+      ],
       "attempts": []
     },
     {
@@ -510,7 +540,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-026", "feat-012"],
+      "depends_on": [
+        "feat-026",
+        "feat-012"
+      ],
       "attempts": []
     },
     {
@@ -527,7 +560,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-027", "feat-030"],
+      "depends_on": [
+        "feat-027",
+        "feat-030"
+      ],
       "attempts": []
     },
     {
@@ -544,7 +580,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-017", "feat-027"],
+      "depends_on": [
+        "feat-017",
+        "feat-027"
+      ],
       "attempts": []
     },
     {
@@ -559,7 +598,11 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-011", "feat-023", "feat-030"],
+      "depends_on": [
+        "feat-011",
+        "feat-023",
+        "feat-030"
+      ],
       "attempts": []
     },
     {
@@ -576,7 +619,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-003"],
+      "depends_on": [
+        "feat-003"
+      ],
       "attempts": []
     },
     {
@@ -593,7 +638,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-029", "feat-032"],
+      "depends_on": [
+        "feat-029",
+        "feat-032"
+      ],
       "attempts": []
     },
     {
@@ -610,7 +658,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-028", "feat-032"],
+      "depends_on": [
+        "feat-028",
+        "feat-032"
+      ],
       "attempts": []
     },
     {
@@ -628,7 +679,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-032"],
+      "depends_on": [
+        "feat-032"
+      ],
       "attempts": []
     },
     {
@@ -645,7 +698,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-035"],
+      "depends_on": [
+        "feat-035"
+      ],
       "attempts": []
     },
     {
@@ -662,7 +717,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-035"],
+      "depends_on": [
+        "feat-035"
+      ],
       "attempts": []
     },
     {
@@ -679,7 +736,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-028", "feat-035"],
+      "depends_on": [
+        "feat-028",
+        "feat-035"
+      ],
       "attempts": []
     },
     {
@@ -695,7 +755,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-038"],
+      "depends_on": [
+        "feat-038"
+      ],
       "attempts": []
     },
     {
@@ -711,7 +773,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-038"],
+      "depends_on": [
+        "feat-038"
+      ],
       "attempts": []
     },
     {
@@ -730,7 +794,9 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-035"],
+      "depends_on": [
+        "feat-035"
+      ],
       "attempts": []
     },
     {
@@ -746,7 +812,10 @@
       ],
       "status": "pending",
       "priority": "medium",
-      "depends_on": ["feat-038", "feat-040"],
+      "depends_on": [
+        "feat-038",
+        "feat-040"
+      ],
       "attempts": []
     },
     {
@@ -762,7 +831,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-038", "feat-042"],
+      "depends_on": [
+        "feat-038",
+        "feat-042"
+      ],
       "attempts": []
     },
     {
@@ -779,7 +851,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-019", "feat-023"],
+      "depends_on": [
+        "feat-019",
+        "feat-023"
+      ],
       "attempts": []
     },
     {
@@ -795,7 +870,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-044", "feat-010"],
+      "depends_on": [
+        "feat-044",
+        "feat-010"
+      ],
       "attempts": []
     },
     {
@@ -810,7 +888,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-010", "feat-045"],
+      "depends_on": [
+        "feat-010",
+        "feat-045"
+      ],
       "attempts": []
     },
     {
@@ -825,7 +906,10 @@
       ],
       "status": "pending",
       "priority": "medium",
-      "depends_on": ["feat-018", "feat-024"],
+      "depends_on": [
+        "feat-018",
+        "feat-024"
+      ],
       "attempts": []
     },
     {
@@ -840,7 +924,10 @@
       ],
       "status": "pending",
       "priority": "medium",
-      "depends_on": ["feat-029", "feat-030"],
+      "depends_on": [
+        "feat-029",
+        "feat-030"
+      ],
       "attempts": []
     },
     {
@@ -856,7 +943,11 @@
       ],
       "status": "pending",
       "priority": "medium",
-      "depends_on": ["feat-040", "feat-045", "feat-046"],
+      "depends_on": [
+        "feat-040",
+        "feat-045",
+        "feat-046"
+      ],
       "attempts": []
     },
     {
@@ -873,7 +964,12 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-027", "feat-028", "feat-029", "feat-030"],
+      "depends_on": [
+        "feat-027",
+        "feat-028",
+        "feat-029",
+        "feat-030"
+      ],
       "attempts": []
     },
     {
@@ -890,7 +986,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-026", "feat-032"],
+      "depends_on": [
+        "feat-026",
+        "feat-032"
+      ],
       "attempts": []
     },
     {
@@ -907,7 +1006,10 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": ["feat-006", "feat-007"],
+      "depends_on": [
+        "feat-006",
+        "feat-007"
+      ],
       "attempts": []
     },
     {
@@ -922,7 +1024,9 @@
       ],
       "status": "pending",
       "priority": "medium",
-      "depends_on": ["feat-003"],
+      "depends_on": [
+        "feat-003"
+      ],
       "attempts": []
     },
     {
@@ -939,7 +1043,10 @@
       ],
       "status": "pending",
       "priority": "medium",
-      "depends_on": ["feat-010", "feat-038"],
+      "depends_on": [
+        "feat-010",
+        "feat-038"
+      ],
       "attempts": []
     },
     {
@@ -955,7 +1062,10 @@
       ],
       "status": "pending",
       "priority": "medium",
-      "depends_on": ["feat-021", "feat-038"],
+      "depends_on": [
+        "feat-021",
+        "feat-038"
+      ],
       "attempts": []
     },
     {
@@ -971,17 +1081,21 @@
       ],
       "status": "pending",
       "priority": "medium",
-      "depends_on": ["feat-035", "feat-037"],
+      "depends_on": [
+        "feat-035",
+        "feat-037"
+      ],
       "attempts": []
     }
   ],
   "metadata": {
     "total_features": 56,
-    "passing": 4,
-    "failing": 52,
+    "passing": 5,
+    "failing": 51,
     "in_progress": 0,
     "blocked": 1,
     "deferred": 1,
     "last_updated": "2026-09-12"
-  }
+  },
+  "schema_version": 1
 }
