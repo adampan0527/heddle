@@ -57,6 +57,7 @@ import websockets
 from websockets.asyncio.server import ServerConnection, serve
 
 from heddle_common import logging as _logging
+from heddle_common.projects_io import Project
 from heddle_daemon.agent_runtime import (
     RECURSION_LIMIT_ENV_VAR,
     get_max_steps_from_env,
@@ -376,6 +377,17 @@ class Daemon:
         # the .checkpoint_store property for feat-019+ to compile
         # graphs against. None for skeleton-only / project-less runs.
         self._checkpoint_store: Optional[ProjectCheckpointStore] = None
+        # Per-feature ``asyncio.Event`` keyed by feature_id (=
+        # LangGraph thread_id). Created when feat-030's start_feature
+        # handler kicks off a run_agent_step, set when either:
+        #   * feat-030's stop_feature handler is invoked by the user,
+        #   * or ``_on_project_removed`` (feat-014 cascade) fires for
+        #     the project this thread belongs to.
+        # The runtime checks ``stop_event.is_set()`` after each LLM
+        # call + each tool dispatch and raises ``FeatureAbortedError``
+        # when it sees the signal. v0.1 is single-project so all
+        # entries in this dict share the same project scope.
+        self._feature_stop_events: dict[str, asyncio.Event] = {}
 
     @property
     def config(self) -> DaemonConfig:
@@ -508,6 +520,76 @@ class Daemon:
     def request_stop(self) -> None:
         """Signal `serve_forever()` to exit. Safe from any coroutine or sync code."""
         self._shutdown.set()
+
+    async def _on_project_removed(self, project: Project) -> None:
+        """Teardown hook for ``project_cascade.remove_project_with_cascade``.
+
+        Called by ``heddle_common.project_cascade`` once the registry
+        has been updated. The cascade calls this hook BEFORE deleting
+        the on-disk log files; this method (1) signals every in-flight
+        thread's stop_event so any active ``run_agent_step`` /
+        ``resume`` raises :class:`FeatureAbortedError` promptly, then
+        (2) closes the per-project LangGraph checkpoint store so the
+        daemon stops writing to ``<project_path>/.heddle/checkpoints.db``.
+
+        Best-effort semantics:
+
+            * Setting every stop_event is a sync, infallible operation
+              (``asyncio.Event.set`` never raises).
+            * Closing the checkpoint store is awaited; a failure here
+              is logged at warn level but does not propagate — the
+              registry entry is already gone, and the caller has
+              already deleted the log files, so a stuck close() must
+              not cascade.
+
+        The hook does NOT tear down the WS server itself; that's
+        ``Daemon.stop()``. The daemon stays up so a subsequent
+        ``add_project`` for a different path can continue to be served.
+        """
+        # 1. Signal every in-flight thread. Asyncio's ``Event.set()``
+        # is idempotent and thread-safe so calling it repeatedly (or
+        # on an already-set event) is harmless.
+        n_signaled = len(self._feature_stop_events)
+        for evt in self._feature_stop_events.values():
+            evt.set()
+        if n_signaled > 0:
+            _logging.warn(
+                component="daemon",
+                event="project_removed_abort_in_flight",
+                msg=(
+                    f"project {project.id!r} removed; signaled "
+                    f"{n_signaled} in-flight thread stop event(s) "
+                    f"to raise FeatureAbortedError"
+                ),
+                project_id=project.id,
+                in_flight_count=n_signaled,
+            )
+        # 2. Close the checkpoint store. Matches the teardown logic
+        # in ``stop()`` but does NOT close the WS server or set the
+        # shutdown event — the daemon stays alive for a different
+        # project (or for a future add_project).
+        if self._checkpoint_store is not None:
+            try:
+                await self._checkpoint_store.close()
+            except Exception as exc:
+                _logging.warn(
+                    component="daemon",
+                    event="checkpoint_close_failed_on_project_removal",
+                    msg=(
+                        f"checkpoint store close raised during project "
+                        f"removal cascade: {exc}"
+                    ),
+                    project_id=project.id,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
+            self._checkpoint_store = None
+        # Clear the per-feature stop_events — the threads they belonged
+        # to are now aborted and any future thread on the same id
+        # (re-registering feat-014 on the same project, unlikely but
+        # possible if the user re-adds the project) should get a fresh
+        # event.
+        self._feature_stop_events.clear()
 
     async def _handle_connection(self, conn: ServerConnection) -> None:
         """Dispatch a single websocket connection."""

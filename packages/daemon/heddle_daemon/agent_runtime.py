@@ -173,6 +173,34 @@ class LLMRetryExhaustedError(AgentRuntimeError):
         self.last_exception = last_exception
 
 
+class FeatureAbortedError(AgentRuntimeError):
+    """Raised when an external stop event fires mid-run (feat-014).
+
+    The daemon registers a per-thread ``asyncio.Event`` in
+    ``Daemon._feature_stop_events`` (keyed by feature_id). When the
+    cascade (``project_cascade.remove_project_with_cascade``) detects
+    a project removal, the daemon's ``_on_project_removed`` hook sets
+    every in-flight thread's stop event; the runtime checks the event
+    after each LLM call and tool dispatch and raises this error to
+    unwind the loop cleanly.
+
+    Distinct from :class:`RecursionLimitError` and
+    :class:`LLMRetryExhaustedError`: this is an *external* abort, not
+    a budget exhaustion. The daemon / WS layer can render
+    ``cause="feature_aborted"`` distinctly from
+    ``cause="recursion_limit"`` so the UI can show "project removed"
+    vs. "agent gave up". ``.cause`` is the stable classification.
+    """
+
+    def __init__(self, thread_id: str) -> None:
+        super().__init__(
+            f"feature for thread_id={thread_id!r} aborted by external "
+            f"stop event (likely project removal; feat-014)"
+        )
+        self.thread_id = thread_id
+        self.cause = "feature_aborted"
+
+
 # Exceptions we deliberately do NOT retry. (KeyboardInterrupt,
 # SystemExit, asyncio.CancelledError, plus our own runtime errors
 # — a RecursionLimitError on the LLM call would loop the retry
@@ -266,6 +294,7 @@ class AgentRuntime:
         llm: LLMCallable,
         *,
         max_steps: int = DEFAULT_MAX_STEPS,
+        stop_event: Optional[asyncio.Event] = None,
     ) -> LLMResponse:
         """Run one user-message through the LLM ↔ tools loop.
 
@@ -275,10 +304,25 @@ class AgentRuntime:
         final assistant message (LLMResponse with ``stop_reason ==
         "end_turn"``) once the LLM stops requesting tools.
 
+        Args:
+            thread_id: feature_id (also the LangGraph thread_id).
+            user_message: the new user message to append.
+            llm: any ``LLMCallable`` (async / sync / LangChain).
+            max_steps: per-invocation LLM-turn ceiling (D-052).
+            stop_event: optional external abort signal (feat-014).
+                When provided, the runtime checks ``stop_event.is_set()``
+                after every LLM call and after every tool dispatch;
+                on a set event, it raises :class:`FeatureAbortedError`
+                and aborts the loop without retrying. Defaults to
+                ``None`` (no external abort) — preserves the feat-019 /
+                feat-022 contract.
+
         Raises:
             RecursionLimitError: ``max_steps`` LLM turns reached
                 without an end_turn. ``.cause == "recursion_limit"``
                 per D-052.
+            FeatureAbortedError: ``stop_event`` was set during the
+                loop. ``.cause == "feature_aborted"`` per feat-014.
             ValueError: thread_id malformed, user_message empty.
         """
         if not isinstance(user_message, str) or not user_message:
@@ -306,6 +350,22 @@ class AgentRuntime:
         while steps_taken < max_steps:
             steps_taken += 1
             response = await self._call_llm(llm, messages)
+            # External abort check: AFTER the LLM returns (so we never
+            # waste a half-finished call), BEFORE we mutate state
+            # (so a future resume from the checkpoint does not see
+            # the half-step we are about to discard).
+            if stop_event is not None and stop_event.is_set():
+                _logging.warn(
+                    component="agent_runtime",
+                    event="feature_aborted",
+                    msg=(
+                        f"stop_event set after LLM call on thread "
+                        f"{canonical_thread!r}; raising FeatureAbortedError"
+                    ),
+                    thread_id=canonical_thread,
+                    steps_taken=steps_taken,
+                )
+                raise FeatureAbortedError(canonical_thread)
             messages.append(self._response_to_message(response))
 
             if not response.has_tool_calls:
@@ -333,6 +393,23 @@ class AgentRuntime:
                 tool_result_text = await self.sandbox.dispatch_async(
                     tc.name, tc.args
                 )
+                # External abort check: AFTER each tool dispatch so
+                # the agent can still bail out promptly between
+                # tool calls. Persisted state above remains intact;
+                # a future resume re-runs the loop from the same
+                # checkpoint.
+                if stop_event is not None and stop_event.is_set():
+                    _logging.warn(
+                        component="agent_runtime",
+                        event="feature_aborted",
+                        msg=(
+                            f"stop_event set after tool dispatch on thread "
+                            f"{canonical_thread!r}; raising FeatureAbortedError"
+                        ),
+                        thread_id=canonical_thread,
+                        steps_taken=steps_taken,
+                    )
+                    raise FeatureAbortedError(canonical_thread)
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
@@ -355,7 +432,13 @@ class AgentRuntime:
         )
         raise RecursionLimitError(steps_taken=steps_taken, max_steps=max_steps)
 
-    async def resume(self, thread_id: str, llm: LLMCallable) -> LLMResponse:
+    async def resume(
+        self,
+        thread_id: str,
+        llm: LLMCallable,
+        *,
+        stop_event: Optional[asyncio.Event] = None,
+    ) -> LLMResponse:
         """Resume a thread from its last persisted state with no new message.
 
         Used by the daemon restart / supervisor after a crash: the
@@ -364,6 +447,16 @@ class AgentRuntime:
         from where it stopped. Raises ``RecursionLimitError`` if the
         thread is already at max_steps of tool calls without an
         end_turn (D-051, D-052 budget exhaustion).
+
+        Args:
+            thread_id: feature_id to resume.
+            llm: any ``LLMCallable``.
+            stop_event: optional external abort signal (feat-014).
+                Same semantics as in :meth:`run_agent_step`.
+
+        Raises:
+            RecursionLimitError: ``max_steps`` reached.
+            FeatureAbortedError: ``stop_event`` was set during the loop.
         """
         canonical_thread = ProjectCheckpointStore.thread_id_for_feature(thread_id)
         state = await self._load_state(canonical_thread)
@@ -381,6 +474,18 @@ class AgentRuntime:
         while steps_taken < self.max_steps:
             steps_taken += 1
             response = await self._call_llm(llm, messages)
+            if stop_event is not None and stop_event.is_set():
+                _logging.warn(
+                    component="agent_runtime",
+                    event="feature_aborted",
+                    msg=(
+                        f"stop_event set after LLM call on resume of "
+                        f"thread {canonical_thread!r}; raising FeatureAbortedError"
+                    ),
+                    thread_id=canonical_thread,
+                    steps_taken=steps_taken,
+                )
+                raise FeatureAbortedError(canonical_thread)
             messages.append(self._response_to_message(response))
             if not response.has_tool_calls:
                 await self._save_state(canonical_thread, messages)
@@ -388,6 +493,19 @@ class AgentRuntime:
             for tc in response.tool_calls:
                 await self._save_state(canonical_thread, messages)
                 tool_result_text = await self.sandbox.dispatch_async(tc.name, tc.args)
+                if stop_event is not None and stop_event.is_set():
+                    _logging.warn(
+                        component="agent_runtime",
+                        event="feature_aborted",
+                        msg=(
+                            f"stop_event set after tool dispatch on "
+                            f"resume of thread {canonical_thread!r}; "
+                            f"raising FeatureAbortedError"
+                        ),
+                        thread_id=canonical_thread,
+                        steps_taken=steps_taken,
+                    )
+                    raise FeatureAbortedError(canonical_thread)
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
@@ -775,6 +893,7 @@ __all__ = [
     "SYSTEM_PROMPT",
     "AgentRuntime",
     "AgentRuntimeError",
+    "FeatureAbortedError",
     "LLMCallable",
     "LLMRetryExhaustedError",
     "LLMResponse",

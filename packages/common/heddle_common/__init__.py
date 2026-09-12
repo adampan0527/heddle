@@ -99,3 +99,17 @@ from .env_loader import (  # noqa: F401
     load_env_file,
     parse_env_lines,
 )
+
+# Re-export the project_cascade API (feat-014) so callers can do
+# `from heddle_common import remove_project_with_cascade`. The CLI's
+# `heddle projects remove` command and the daemon's per-project
+# teardown path both call this — it wraps projects_io.remove_project
+# with the on-disk log cleanup + an optional daemon-side teardown
+# hook. Keeping the hook signature here (rather than in the daemon
+# package) means library callers do not need a daemon dependency.
+from .project_cascade import (  # noqa: F401
+    DEFAULT_LOGS_DIR,
+    OnRemoveHook,
+    default_logs_dir,
+    remove_project_with_cascade,
+)
