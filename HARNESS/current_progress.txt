@@ -112,8 +112,8 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 SUMMARY
 -------
 Total features: 54
-Passing: 18
-Failing: 36
+Passing: 19
+Failing: 35
 In progress: 1
 Blocked: 0
 Deferred: 0
@@ -165,5 +165,17 @@ Last updated: 2026-09-12
 **Features now passing:** feat-022 (18 / 54 total)
 
 **Notes:** feat-022: HEDDLE_RECURSION_LIMIT (default 200) + 1s/2s/4s exponential backoff LLM retry (D-041); RecursionLimitError cause='recursion_limit', LLMRetryExhaustedError cause='llm_retry_exhausted'. Also fixed pre-existing test flake: checkpoint id used random memory addresses; switched to len(messages) for monotonic, cross-process-safe ids. 18/190 daemon tests pass (was 170).
+
+---
+### SESSION 10 — 2026-09-12
+
+
+**Worked on:** feat-023 @ a1cf1cc
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-023 (19 / 54 total)
+
+**Notes:** feat-023: heddle_daemon/llm.py factory for 4 providers (anthropic/openai/bedrock/ollama). API-key chokepoint via configs_io.resolve_api_key (T-015); LLMConfigError cause='llm_config_error' on missing. Bedrock reads AWS_REGION/AWS_DEFAULT_REGION; Ollama ignores api_key_env. 18 new tests, 208 daemon total. feat-031 (LLM resolution at start_feature) + feat-044 (intent classification) unblocked.
 
 ---
