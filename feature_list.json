@@ -611,7 +611,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 10,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-023",
