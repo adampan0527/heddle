@@ -23,6 +23,7 @@ from typing import Any
 
 from _constants import SESSION_STATUSES, SESSION_STATUS_LABELS
 from _atomic_io import atomic_write_json, atomic_write_text
+from _file_lock import file_lock
 
 # Project paths — script lives in tools/, assume caller ran from project root.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
