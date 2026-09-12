@@ -23,7 +23,15 @@
  * Per TECH.md T-017 / T-030. Defense-in-depth: redaction happens here
  * even when callers mean to redact, so a future caller typo cannot
  * silently leak a credential into the log stream.
+ *
+ * feat-015: an optional rotating file sink may be attached via
+ * `attachFileSink(sink)`. When attached, every emitted event is
+ * serialized to the sink after redaction (the sink receives the
+ * redacted payload — it does NOT re-redact). The stderr path is
+ * unchanged when no sink is attached.
  */
+
+import type { RotatingFileSink } from "./rotating-file-sink.js";
 
 export type Level = "debug" | "info" | "warn" | "error";
 export type Component = "node";
@@ -90,6 +98,42 @@ function emit(
   };
   const redacted = redact(payload);
   process.stderr.write(JSON.stringify(redacted) + "\n");
+  // feat-015: forward the redacted payload to the optional rotating
+  // file sink. The sink has already been opened via attachFileSink;
+  // when no sink is attached the module-level state is null and the
+  // hot path is a single null-check.
+  if (_fileSink !== null) {
+    _fileSink.write(JSON.stringify(redacted) + "\n");
+  }
+}
+
+/** Module-level rotating file sink. Null means "no sink attached". */
+let _fileSink: RotatingFileSink | null = null;
+
+/**
+ * Attach a rotating file sink to the stderr emit path.
+ *
+ * Idempotent: if a sink is already attached it is closed before the
+ * new one is wired in, so a second call never leaks the previous
+ * file handle. The stderr path itself is unchanged.
+ */
+export function attachFileSink(sink: RotatingFileSink): void {
+  if (_fileSink !== null) {
+    _fileSink.close();
+    _fileSink = null;
+  }
+  _fileSink = sink;
+}
+
+/**
+ * Detach the rotating file sink. Idempotent (no-op when no sink is
+ * attached) so it is safe to call from shutdown paths without
+ * checking state.
+ */
+export function detachFileSink(): void {
+  if (_fileSink === null) return;
+  _fileSink.close();
+  _fileSink = null;
 }
 
 export const logger = {

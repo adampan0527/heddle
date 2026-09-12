@@ -364,12 +364,20 @@
         "Test: write 100 MB of logs to a single project; assert the file rolls over and the oldest generation is deleted",
         "Test: set HEDDLE_LOG_MAX_BYTES=1048576; write 5 MB; assert 5 backup files exist"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "medium",
       "depends_on": [
         "feat-005"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-015",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1526,8 +1534,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 30,
-    "failing": 24,
+    "passing": 31,
+    "failing": 23,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

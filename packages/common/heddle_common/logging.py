@@ -25,13 +25,18 @@ from __future__ import annotations
 import json
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Final, Literal
+
+from .log_rotation import RotatingFileSink
 
 __all__ = [
     "Component",
     "Level",
     "REDACT_PATTERNS",
+    "attach_file_sink",
     "debug",
+    "detach_file_sink",
     "emit",
     "error",
     "info",
@@ -102,6 +107,60 @@ def emit(
     payload = redact(payload)
     sys.stderr.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
     sys.stderr.flush()
+    # feat-015: optional rotating file sink. The module-level sink is
+    # set by ``attach_file_sink`` (called from the daemon's start() /
+    # Node.js supervisor's bootstrap); when present, every emitted line
+    # is also written to disk with redaction already applied. The sink
+    # must NOT re-redact (that would double-strip; backups inherit the
+    # redaction guarantees of the caller). Idempotent attach / detach
+    # are documented on the helpers below.
+    if _file_sink is not None:
+        _file_sink.emit(payload)
+
+
+# Module-level rotating file sink — ``None`` means "no sink attached",
+# which is the default for tests and any caller that does not opt in.
+# Attach / detach are idempotent so a misordered call sequence from
+# the daemon or the Node.js supervisor cannot crash the process.
+_file_sink: RotatingFileSink | None = None
+
+
+def attach_file_sink(
+    path: str | Path,
+    *,
+    max_bytes: int | None = None,
+    backup_count: int | None = None,
+) -> None:
+    """Attach a :class:`RotatingFileSink` to the stderr emit path.
+
+    Idempotent: if a sink is already attached it is closed before the
+    new one is constructed, so a second ``attach_file_sink`` call
+    never leaks the previous file handle. ``max_bytes`` and
+    ``backup_count`` default to ``RotatingFileSink``'s env-var-aware
+    defaults (50 MiB / 5 generations).
+    """
+    global _file_sink
+    if _file_sink is not None:
+        _file_sink.close()
+        _file_sink = None
+    _file_sink = RotatingFileSink(
+        path, max_bytes=max_bytes, backup_count=backup_count
+    )
+
+
+def detach_file_sink() -> None:
+    """Close + clear the module-level sink. Idempotent (no-op when no sink).
+
+    Returns ``None`` whether or not a sink was attached so callers can
+    invoke this in shutdown paths without checking state.
+    """
+    global _file_sink
+    if _file_sink is None:
+        return
+    try:
+        _file_sink.close()
+    finally:
+        _file_sink = None
 
 
 def debug(component: Component, event: str, msg: str, **kw: Any) -> None:

@@ -25,12 +25,114 @@ import { buildServer, isLoopback, DEFAULT_HOST, DEFAULT_PORT } from "./server.js
 import { DaemonSupervisor } from "./supervisor.js";
 import { BrowserWsBridge } from "./browser-ws.js";
 import { logger } from "./lib/logger.js";
+import {
+  attachFileSink,
+  detachFileSink,
+} from "./lib/logger.js";
+import { RotatingFileSink } from "./lib/rotating-file-sink.js";
+import { listProjects } from "./lib/projects-registry.js";
 import type { DaemonEventRecord } from "./protocol.js";
 import { assertNeverDaemonEvent } from "./protocol.js";
 
 const host = process.env.HEDDLE_NODE_HOST ?? DEFAULT_HOST;
 const portRaw = process.env.HEDDLE_NODE_PORT ?? String(DEFAULT_PORT);
 const port = Number.parseInt(portRaw, 10);
+
+// feat-015: per-project log directory + Node.js supervisor log
+// filename suffix. The Python daemon writes ``<project_id>.daemon.log``;
+// the Node.js supervisor writes ``<project_id>.node.log``. Different
+// filenames avoid Windows sharing violations and let the two streams
+// be diffed independently during debugging.
+const DEFAULT_LOGS_DIR = joinFromHome(".heddle", "logs");
+const NODE_LOG_SUFFIX = ".node.log";
+
+function joinFromHome(...segments: string[]): string {
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? ".";
+  return segments.reduce((acc, seg) => joinPath(acc, seg), home);
+}
+
+function joinPath(a: string, b: string): string {
+  // Cross-platform join that doesn't depend on `node:path` at module
+  // load time (so tests can stub HOME before the import).
+  return a === "." ? b : `${a}/${b}`;
+}
+
+/**
+ * feat-015: attach a per-project rotating log sink for the
+ * supervisor. Returns the attached sink (or null when no project is
+ * registered — graceful fallback). Exported so the integration test
+ * can drive it without going through the full process bootstrap.
+ *
+ * v0.1 single-project scope: the supervisor picks the first project
+ * (registry insertion order). feat-034 / feat-050 will turn this into
+ * a real active-project picker that closes the sink on project-switch.
+ */
+export function attachProjectLogSinkForActiveProject(
+  projectsReader: () => ProjectLike[] = listProjects,
+  logsDir: string = DEFAULT_LOGS_DIR,
+  suffix: string = NODE_LOG_SUFFIX,
+): RotatingFileSink | null {
+  let projects: ProjectLike[];
+  try {
+    projects = projectsReader();
+  } catch (err) {
+    logger.warn(
+      "node",
+      "project_log_sink_skipped",
+      `projects registry read failed: ${String(err)}`,
+      { reason: "projects_read_failed" },
+    );
+    return null;
+  }
+  if (projects.length === 0) {
+    logger.warn(
+      "node",
+      "project_log_sink_skipped",
+      "no registered projects; supervisor serves without a rotating log file",
+      { reason: "no_projects_registered" },
+    );
+    return null;
+  }
+  const active = projects[0];
+  const logPath = `${logsDir}/${active.id}${suffix}`;
+  let sink: RotatingFileSink;
+  try {
+    sink = new RotatingFileSink(logPath);
+  } catch (err) {
+    logger.warn(
+      "node",
+      "project_log_sink_skipped",
+      `cannot attach rotating log sink at ${logPath}: ${String(err)}`,
+      {
+        reason: "sink_attach_failed",
+        log_path: logPath,
+        project_id: active.id,
+      },
+    );
+    return null;
+  }
+  attachFileSink(sink);
+  logger.info(
+    "node",
+    "project_log_sink_attached",
+    `rotating log sink attached at ${logPath} (max_bytes=${sink.maxBytes}, backup_count=${sink.backupCount})`,
+    {
+      log_path: logPath,
+      project_id: active.id,
+      max_bytes: sink.maxBytes,
+      backup_count: sink.backupCount,
+    },
+  );
+  return sink;
+}
+
+interface ProjectLike {
+  id: string;
+  name: string;
+  path: string;
+  added_at: string;
+  last_accessed_at: string;
+}
 
 if (!isLoopback(host)) {
   logger.error(
@@ -277,6 +379,10 @@ try {
     "supervisor_started",
     `DaemonSupervisor entered RUNNING; daemon pid=${supervisor.pid ?? "?"}`,
   );
+  // feat-015: now that the daemon port is confirmed live, attach the
+  // per-project rotating log sink. We do this AFTER supervisor.start()
+  // so a failing sink never blocks the daemon from running.
+  attachProjectLogSinkForActiveProject();
 } catch (err) {
   logger.error("node", "supervisor_start_failed", String(err));
   process.exit(1);
@@ -302,6 +408,13 @@ const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     await app.close();
   } catch (err) {
     logger.warn("node", "shutdown_error", String(err));
+  }
+  // feat-015: detach + close the rotating log sink before stopping
+  // the supervisor so the trailing log events land on disk.
+  try {
+    detachFileSink();
+  } catch (err) {
+    logger.warn("node", "log_sink_detach_failed", String(err));
   }
   try {
     await supervisor.stop();

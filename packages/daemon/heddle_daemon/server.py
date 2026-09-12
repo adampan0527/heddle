@@ -57,7 +57,8 @@ import websockets
 from websockets.asyncio.server import ServerConnection, serve
 
 from heddle_common import logging as _logging
-from heddle_common.projects_io import Project
+from heddle_common.log_rotation import RotatingFileSink
+from heddle_common.projects_io import Project, list_projects
 from heddle_daemon.agent_runtime import (
     RECURSION_LIMIT_ENV_VAR,
     get_max_steps_from_env,
@@ -114,6 +115,14 @@ ENV_FAKE_LLM_FIXTURE_ROOT: Final[str] = "HEDDLE_FAKE_LLM_FIXTURE_ROOT"
 # without depending on the user's home directory layout.
 DEFAULT_CONFIGS_PATH: Final[str] = "~/.heddle/configs.yaml"
 DEFAULT_FAKE_LLM_FIXTURE_ROOT: Final[str] = "~/.heddle/fake_fixtures"
+
+# feat-015: default log directory and per-component filename suffix.
+# The Python daemon writes ``<project_id>.daemon.log``; the Node.js
+# supervisor writes ``<project_id>.node.log`` (feat-015 "Important
+# invariant"). Different filenames avoid Windows sharing violations
+# and let the two streams be diffed independently during debugging.
+DEFAULT_LOGS_DIR: Final[str] = "~/.heddle/logs"
+DAEMON_LOG_SUFFIX: Final[str] = ".daemon.log"
 
 
 # ---------- config ----------
@@ -451,6 +460,13 @@ class Daemon:
         # called; the daemon's ``__main__`` does that before ``start()``.
         self._routes_enabled: bool = False
         self._routes: Optional[Any] = None  # type: ignore[assignment]
+        # feat-015: per-project rotating log sink. Created in ``start()``
+        # when ``config.project_path`` resolves to a registered project;
+        # otherwise ``start()`` logs a structured ``project_log_sink_skipped``
+        # warn event and continues (graceful fallback). Always closed in
+        # ``stop()`` and in ``_on_project_removed`` so a stale file handle
+        # cannot survive a project switch.
+        self._log_sink: Optional[RotatingFileSink] = None
 
     @property
     def config(self) -> DaemonConfig:
@@ -562,6 +578,15 @@ class Daemon:
                 db_path=str(self._checkpoint_store.db_path),
             )
 
+        # feat-015: attach a per-project rotating log sink. We resolve
+        # the project_id by matching ``config.project_path`` against
+        # the registered projects (D-057). If no match is found the
+        # daemon logs a structured ``project_log_sink_skipped`` warn
+        # event and continues — graceful fallback is required so the
+        # skeleton-mode daemon (project_path=None) and the first-run
+        # daemon (no registered project yet) can still serve.
+        self._attach_log_sink()
+
         self._server = await serve(
             self._handle_connection,
             self._config.host,
@@ -578,6 +603,11 @@ class Daemon:
 
     async def stop(self) -> None:
         """Close the server and any in-flight connections."""
+        # feat-015: detach + close the rotating log sink first so the
+        # very last ``daemon_stopped`` event (logged a few lines below)
+        # is also captured on disk. Best-effort: a sink close failure
+        # does not prevent the rest of the teardown from running.
+        self._close_log_sink()
         if self._server is not None:
             self._server.close()
             try:
@@ -652,6 +682,17 @@ class Daemon:
         ``Daemon.stop()``. The daemon stays up so a subsequent
         ``add_project`` for a different path can continue to be served.
         """
+        # 0. feat-015: close the per-project rotating log sink BEFORE
+        # we signal any in-flight threads. ``_on_project_removed``
+        # is the only place the daemon learns a project is leaving,
+        # and leaving the sink open would leak the file handle once
+        # the project is removed from the registry. The next daemon
+        # start (against a different project) would also see a stale
+        # sink from this project's log file. v0.1 single-project
+        # scope means we do NOT re-attach here; feat-034 will add
+        # project-switch re-attach when the registry becomes a real
+        # multi-project rotation primitive.
+        self._close_log_sink()
         # 1. Signal every in-flight thread. Asyncio's ``Event.set()``
         # is idempotent and thread-safe so calling it repeatedly (or
         # on an already-set event) is harmless.
@@ -696,6 +737,127 @@ class Daemon:
         # possible if the user re-adds the project) should get a fresh
         # event.
         self._feature_stop_events.clear()
+
+    def _attach_log_sink(self) -> None:
+        """Attach a per-project rotating log sink (feat-015).
+
+        Resolves the project_id by matching ``config.project_path``
+        against the registered projects (D-057). When a match is
+        found a ``RotatingFileSink`` is attached at
+        ``~/.heddle/logs/<project_id>.daemon.log`` and stored on
+        ``self._log_sink``. When the path is unset (skeleton / test
+        mode) or no registered project matches, the method emits a
+        structured ``project_log_sink_skipped`` warn event and
+        returns — the daemon continues to serve without a file
+        sink (graceful fallback; no silent failure).
+
+        v0.1 is single-project-at-a-time so this is called once
+        per ``start()``; project-switch re-attach belongs to a
+        follow-up feature.
+        """
+        if self._config.project_path is None:
+            _logging.warn(
+                component="daemon",
+                event="project_log_sink_skipped",
+                msg=(
+                    "no project_path configured; daemon serves without a "
+                    "per-project rotating log file (skeleton mode)"
+                ),
+                reason="project_path_unset",
+            )
+            return
+        try:
+            registered = list_projects()
+        except Exception as exc:
+            # Graceful fallback: a missing / malformed projects.json
+            # must NOT prevent the daemon from serving. We log the
+            # failure so the operator can investigate.
+            _logging.warn(
+                component="daemon",
+                event="project_log_sink_skipped",
+                msg=f"cannot read projects registry: {exc}",
+                reason="projects_read_failed",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+            return
+        target = self._config.project_path
+        for proj in registered:
+            try:
+                if Path(proj.path).resolve() == target:
+                    log_path = (
+                        Path(DEFAULT_LOGS_DIR).expanduser()
+                        / f"{proj.id}{DAEMON_LOG_SUFFIX}"
+                    )
+                    try:
+                        self._log_sink = RotatingFileSink(log_path)
+                    except Exception as exc:
+                        # Rotation-policy / FS failure (e.g. read-only
+                        # home dir). Log + continue without the sink
+                        # rather than refuse to start.
+                        _logging.warn(
+                            component="daemon",
+                            event="project_log_sink_skipped",
+                            msg=(
+                                f"cannot attach rotating log sink at "
+                                f"{log_path}: {exc}"
+                            ),
+                            reason="sink_attach_failed",
+                            project_id=proj.id,
+                            log_path=str(log_path),
+                            error_type=type(exc).__name__,
+                            error_message=str(exc),
+                        )
+                        return
+                    _logging.attach_file_sink(log_path)
+                    _logging.info(
+                        component="daemon",
+                        event="project_log_sink_attached",
+                        msg=(
+                            f"rotating log sink attached at {log_path} "
+                            f"(max_bytes={self._log_sink.max_bytes}, "
+                            f"backup_count={self._log_sink.backup_count})"
+                        ),
+                        project_id=proj.id,
+                        log_path=str(log_path),
+                        max_bytes=self._log_sink.max_bytes,
+                        backup_count=self._log_sink.backup_count,
+                    )
+                    return
+            except OSError:
+                # ``Path.resolve`` failed for one entry; skip it and
+                # keep looking. A warn log is emitted by the registry
+                # layer if its iteration surfaces the problem.
+                continue
+        _logging.warn(
+            component="daemon",
+            event="project_log_sink_skipped",
+            msg=(
+                f"no registered project matches project_path={target}; "
+                "daemon serves without a per-project rotating log file"
+            ),
+            reason="no_matching_project",
+            project_path=str(target),
+        )
+
+    def _close_log_sink(self) -> None:
+        """Detach + close the per-project log sink. Idempotent."""
+        if self._log_sink is None:
+            return
+        try:
+            _logging.detach_file_sink()
+        finally:
+            try:
+                self._log_sink.close()
+            except Exception as exc:
+                _logging.warn(
+                    component="daemon",
+                    event="log_sink_close_failed",
+                    msg=f"rotating log sink close raised: {exc}",
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
+            self._log_sink = None
 
     async def _handle_connection(self, conn: ServerConnection) -> None:
         """Dispatch a single websocket connection."""
