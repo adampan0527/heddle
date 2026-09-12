@@ -35,6 +35,7 @@ import {
   resolveRequestTimeoutMs,
   type DaemonRequestEnvelope,
 } from "./types.js";
+import type { DaemonEventRecord, DaemonEventName } from "./protocol.js";
 
 // ---------------------------------------------------------------------------
 // Constants (all `as const` — exported so tests can assert against them).
@@ -139,6 +140,10 @@ export interface DaemonSupervisorEvents {
   "restart-scheduled": [RestartScheduledEvent];
   "restart-budget-warning": [RestartBudgetWarningEvent];
   "ws-handshake": [WsHandshakeEvent];
+  // feat-030: unsolicited events pushed by the daemon (no req_id).
+  // Mirrors the Python side's `build_envelope("event", ...)` output.
+  // Subscribers narrow on `record.event` (see protocol.ts).
+  "daemon-event": [DaemonEventRecord];
 }
 
 export interface SupervisorOptions {
@@ -337,6 +342,44 @@ export class DaemonSupervisor extends EventEmitter {
   }
 
   /**
+   * Fire-and-forget command sender — feat-030 (protocol).
+   *
+   * Same wire shape as `request()` (an outbound command envelope with
+   * a unique `req_id`), but does NOT await a response: the daemon
+   * will push progress events on the event stream and the eventual
+   * response envelope is matched by `request_id` to whatever caller
+   * also called `request()` (or is silently discarded if no one is
+   * waiting). Use this when you only care about the side-effect
+   * (e.g. the WS bridge in feat-029 fanning events out to the
+   * browser); use `request()` when you need the response payload.
+   *
+   * Throws `DaemonUnavailableError` if the supervisor is not RUNNING.
+   * Sync `ws.send` failures are caught and re-thrown so the caller
+   * can decide whether to log + retry or surface to the user.
+   *
+   * `req_id` is auto-allocated if `payload.req_id` is not provided.
+   */
+  sendCommand(
+    envelopeType: string,
+    payload: Record<string, unknown> = {},
+  ): string {
+    if (this._state !== "RUNNING" || !this._ws) {
+      throw new DaemonUnavailableError(this._state);
+    }
+    const reqId =
+      (payload["req_id"] as string | undefined) ??
+      `${process.pid}-${++this._reqSeq}`;
+    const fullEnvelope: DaemonRequestEnvelope = {
+      v: 1,
+      type: envelopeType,
+      req_id: reqId,
+      ...payload,
+    };
+    this._ws.send(JSON.stringify(fullEnvelope));
+    return reqId;
+  }
+
+  /**
    * Bring the daemon up. Idempotent: a second call while STARTING is in
    * flight returns immediately; a call after STOPPED is a no-op.
    */
@@ -512,11 +555,19 @@ export class DaemonSupervisor extends EventEmitter {
   }
 
   /**
-   * feat-028: parse an inbound WS frame and dispatch any
-   * request/response correlation we find. Malformed JSON or messages
-   * without a `req_id` are ignored — those will be the domain of
-   * feat-030's event-stream consumer, not the request/response
-   * wrapper.
+   * feat-028 + feat-030: parse an inbound WS frame and dispatch to the
+   * right consumer.
+   *
+   *   * No `req_id` → daemon-initiated event (feat-030). Forwarded as
+   *     a `daemon-event` EventEmitter payload. Malformed event shapes
+   *     are logged + dropped (a future listener may re-emit as warn).
+   *   * `req_id` present → request/response correlation (feat-028).
+   *     Matched against the pending-request Map; the existing
+   *     ok/error envelope handling is unchanged.
+   *
+   * Malformed JSON is ignored on both paths — feat-029 will add a
+   * dedicated warn log when the browser bridge ships; feat-028/030
+   * stay quiet to keep the wire layer thin.
    */
   private _handleInboundMessage(data: unknown): void {
     let parsed: unknown;
@@ -531,15 +582,58 @@ export class DaemonSupervisor extends EventEmitter {
               : String(data);
       parsed = JSON.parse(text);
     } catch {
-      // Malformed JSON — ignore. feat-030 will log at warn; feat-028
-      // does not own a wire-level error stream so silent ignore is
-      // the least-bad default.
+      // Malformed JSON — ignore. feat-029's browser bridge will log
+      // these at warn; the supervisor stays silent because the same
+      // frame could be a partial server-pushed event we'd otherwise
+      // re-receive as a duplicate parse error.
       return;
     }
     if (!parsed || typeof parsed !== "object") return;
     const obj = parsed as Record<string, unknown>;
     const reqId = obj["req_id"];
-    if (typeof reqId !== "string") return;
+    if (typeof reqId !== "string") {
+      // feat-030: unsolicited event. Validate the minimum shape and
+      // forward; unknown `event` strings land at the listener as
+      // `DaemonEventRecord.event: <string>` — listeners must have a
+      // `default:` arm in their switch (assertNeverDaemonEvent
+      // enforces exhaustiveness during development).
+      const eventName = obj["event"];
+      const projectId = obj["project_id"];
+      if (typeof eventName !== "string" || typeof projectId !== "string") {
+        // Not a valid event envelope and not a response — drop
+        // silently. feat-029 may upgrade this to a warn log once
+        // the browser-facing bridge ships.
+        return;
+      }
+      const featureIdRaw = obj["feature_id"];
+      const featureId =
+        typeof featureIdRaw === "string" && featureIdRaw.length > 0
+          ? featureIdRaw
+          : null;
+      const payloadRaw = obj["payload"];
+      const payload =
+        payloadRaw && typeof payloadRaw === "object"
+          ? (payloadRaw as Record<string, unknown>)
+          : {};
+      // Build a value of the DaemonEventRecord shape. The supervisor
+      // runs at the wire layer so it cannot know the runtime variant
+      // without per-event validation; each listener narrows on
+      // `record.event` (see protocol.ts / main.ts). The cast on
+      // `eventName` widens a runtime string to the literal-union
+      // type — unsafe in theory, but every listener has a
+      // `default:` arm that treats unknown values as a soft warn
+      // rather than crashing, so the worst case is a misnamed event
+      // showing up as `unknown` in the log, not a type explosion.
+      const record: DaemonEventRecord = {
+        event: eventName as DaemonEventName,
+        project_id: projectId,
+        feature_id: featureId,
+        payload,
+        received_at: Date.now(),
+      };
+      this.emit("daemon-event", record);
+      return;
+    }
     const entry = this._pendingRequests.get(reqId);
     if (!entry) return;
     this._pendingRequests.delete(reqId);

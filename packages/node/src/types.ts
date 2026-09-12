@@ -138,6 +138,62 @@ export type DaemonResponseEnvelope<T> =
   | DaemonResponseEnvelopeOk<T>
   | DaemonResponseEnvelopeErr;
 
+// ----- Wire contract additions for feat-030 (commands + events) -----
+//
+// feat-028 speaks request/response only. feat-030 extends the wire with:
+//   1. Commands that elicit a stream of progress events before their
+//      terminal response (start_feature / stop_feature / retry_feature /
+//      dialog_turn). These look exactly like the existing request envelope
+//      (v, type, req_id, ...) — no new shape, just new type strings.
+//   2. Unsolicited events the daemon pushes without a req_id (feature
+//      progress / done / failed / log_line / dialog token / etc.). The
+//      supervisor's inbound dispatcher checks for req_id presence:
+//      present → pending-request Map, absent → "daemon-event" EventEmitter.
+//
+// The full per-event payload shapes live in `protocol.ts` (one file,
+// one job). This file declares the envelope-level types only so the
+// supervisor's `_handleInboundMessage` can narrow on them.
+
+/** All command types feat-030 owns. feat-044 may extend this list. */
+export const COMMAND_TYPES = [
+  "start_feature",
+  "stop_feature",
+  "retry_feature",
+  "dialog_turn",
+] as const;
+export type CommandType = (typeof COMMAND_TYPES)[number];
+
+/**
+ * Outbound command envelope. Same shape as DaemonRequestEnvelope
+ * (intentional — commands ARE requests, they just typically also
+ * trigger event-stream side-effects before the response arrives).
+ */
+export interface DaemonCommandEnvelope {
+  v: 1;
+  type: CommandType | string; // widened to allow older daemon fallbacks
+  req_id: string;
+  project_id?: string;
+  feature_id?: string;
+  message?: string;
+  hint?: string;
+  [extra: string]: unknown;
+}
+
+/**
+ * Inbound unsolicited event envelope. Has NO `req_id` — that's the
+ * discriminator between "response to a request" and "fire-and-forget
+ * event from the daemon". `event` is a string literal union; the
+ * per-event payload shape is in `protocol.ts`.
+ */
+export interface DaemonEventEnvelope {
+  v: 1;
+  type: "event";
+  event: string;
+  project_id: string;
+  feature_id?: string | null;
+  payload: Record<string, unknown>;
+}
+
 // ----- HTTP-level envelopes (routes' shape, browser-facing) -----
 
 /** Successful HTTP response. Browser does `if (resp.ok) ...`. */

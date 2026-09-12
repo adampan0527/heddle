@@ -24,6 +24,8 @@
 import { buildServer, isLoopback, DEFAULT_HOST, DEFAULT_PORT } from "./server.js";
 import { DaemonSupervisor } from "./supervisor.js";
 import { logger } from "./lib/logger.js";
+import type { DaemonEventRecord } from "./protocol.js";
+import { assertNeverDaemonEvent } from "./protocol.js";
 
 const host = process.env.HEDDLE_NODE_HOST ?? DEFAULT_HOST;
 const portRaw = process.env.HEDDLE_NODE_PORT ?? String(DEFAULT_PORT);
@@ -100,6 +102,167 @@ supervisor.on("restart-budget-warning", (e) =>
     { cause: e.cause },
   ),
 );
+
+// feat-030: forward every daemon-pushed event to the structured
+// logger so the JSON-line stream (T-017) carries the full picture of
+// feature progress / completion / failure / streamed dialog tokens.
+// Switch is exhaustive — `assertNeverDaemonEvent` catches a future
+// event added to `protocol.ts` without a matching arm here.
+//
+// `DaemonEventRecord.payload` is `Record<string, unknown>` on the
+// wire layer; each arm re-casts to the variant's typed payload so
+// the discriminant narrowing works inside the switch.
+supervisor.on("daemon-event", (e: DaemonEventRecord) => {
+  const fid = e.feature_id ?? undefined; // null → undefined for LogFields
+  switch (e.event) {
+    case "feature_attempt_started": {
+      const p = e.payload as { attempt_id: string };
+      logger.info(
+        "node",
+        "daemon_feature_attempt_started",
+        `feature ${e.feature_id ?? "?"} attempt ${p.attempt_id} started`,
+        {
+          project_id: e.project_id,
+          feature_id: fid,
+          attempt_id: p.attempt_id,
+        },
+      );
+      break;
+    }
+    case "feature_progress": {
+      const p = e.payload as {
+        attempt_id: string;
+        step: number;
+        message: string;
+      };
+      logger.info(
+        "node",
+        "daemon_feature_progress",
+        `feature ${e.feature_id ?? "?"} step ${p.step}: ${p.message}`,
+        {
+          project_id: e.project_id,
+          feature_id: fid,
+          attempt_id: p.attempt_id,
+          step: p.step,
+        },
+      );
+      break;
+    }
+    case "feature_done": {
+      const p = e.payload as { attempt_id: string };
+      logger.info(
+        "node",
+        "daemon_feature_done",
+        `feature ${e.feature_id ?? "?"} attempt ${p.attempt_id} done`,
+        {
+          project_id: e.project_id,
+          feature_id: fid,
+          attempt_id: p.attempt_id,
+        },
+      );
+      break;
+    }
+    case "feature_failed": {
+      const p = e.payload as {
+        attempt_id: string;
+        error_code: string;
+        error_message: string;
+      };
+      logger.warn(
+        "node",
+        "daemon_feature_failed",
+        `feature ${e.feature_id ?? "?"} attempt ${p.attempt_id} failed: ${p.error_code} ${p.error_message}`,
+        {
+          project_id: e.project_id,
+          feature_id: fid,
+          attempt_id: p.attempt_id,
+          error_code: p.error_code,
+        },
+      );
+      break;
+    }
+    case "feature_stopped": {
+      const p = e.payload as { attempt_id: string };
+      logger.info(
+        "node",
+        "daemon_feature_stopped",
+        `feature ${e.feature_id ?? "?"} attempt ${p.attempt_id} stopped by user`,
+        {
+          project_id: e.project_id,
+          feature_id: fid,
+          attempt_id: p.attempt_id,
+        },
+      );
+      break;
+    }
+    case "log_line": {
+      // Daemon-side structured log forwarded verbatim. The daemon
+      // already redacted sensitive fields before emitting; we just
+      // route to the matching logger level. Unknown levels fall back
+      // to `info`.
+      const p = e.payload as {
+        level: "debug" | "info" | "warn" | "error";
+        event: string;
+        msg: string;
+      };
+      const fn = logger[p.level] ?? logger.info;
+      fn("node", p.event, p.msg, {
+        project_id: e.project_id,
+        feature_id: fid,
+        forwarded_from: "daemon",
+      });
+      break;
+    }
+    case "dialog_token": {
+      const p = e.payload as { token: string };
+      // Streamed LLM token. Don't dump full text to stderr (noisy);
+      // just record arrival so we can correlate with dialog_done.
+      logger.debug(
+        "node",
+        "daemon_dialog_token",
+        `dialog token (${p.token.length} chars)`,
+        {
+          project_id: e.project_id,
+          chars: p.token.length,
+        },
+      );
+      break;
+    }
+    case "dialog_done": {
+      const p = e.payload as { full_text: string };
+      logger.info(
+        "node",
+        "daemon_dialog_done",
+        `dialog stream complete (${p.full_text.length} chars)`,
+        {
+          project_id: e.project_id,
+          chars: p.full_text.length,
+        },
+      );
+      break;
+    }
+    default:
+      // The switch above enumerates every DaemonEventName; an
+      // unhandled value at runtime means the daemon emitted a new
+      // event we don't know about. Log it at warn so the operator
+      // sees it without crashing the supervisor.
+      logger.warn(
+        "node",
+        "daemon_event_unhandled",
+        `daemon emitted unknown event ${String((e as { event: unknown }).event)}`,
+        {
+          project_id: e.project_id,
+          feature_id: fid,
+          event: e.event,
+        },
+      );
+      // assertNeverDaemonEvent is the compile-time exhaustiveness
+      // check; we deliberately don't call it at runtime because
+      // daemon-side evolution must not crash the supervisor.
+      void assertNeverDaemonEvent;
+      break;
+  }
+});
 
 try {
   await supervisor.start();

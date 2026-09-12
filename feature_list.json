@@ -818,7 +818,7 @@
         "Test: send start_feature command; assert daemon begins execution and emits feature_progress events",
         "Test: send stop_feature; assert daemon halts and emits feature_done with outcome=stopped"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "priority": "high",
       "depends_on": [
         "feat-017",
@@ -1467,7 +1467,7 @@
     "total_features": 54,
     "passing": 23,
     "failing": 31,
-    "in_progress": 0,
+    "in_progress": 1,
     "blocked": 0,
     "deferred": 0,
     "last_updated": "2026-09-12"
