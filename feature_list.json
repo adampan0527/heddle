@@ -871,7 +871,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 16,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-031",
@@ -936,7 +936,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 16,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-033",
@@ -961,13 +961,21 @@
         "Test: with two projects registered, switch between them; assert the kanban renders the correct features",
         "Test: with zero projects, the empty state shows; clicking add-project triggers the folder picker"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-028",
         "feat-032"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": 17,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-034",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -987,7 +995,7 @@
         "Drag a card from blocked to ready: rejected (blocked features are locked per D-016)",
         "Test: drag a ready card to in_progress; assert the kanban shows it there and the API call succeeded"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "priority": "high",
       "depends_on": [
         "feat-032"
@@ -1510,9 +1518,9 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 28,
-    "failing": 26,
-    "in_progress": 0,
+    "passing": 29,
+    "failing": 25,
+    "in_progress": 1,
     "blocked": 0,
     "deferred": 0,
     "last_updated": "2026-09-13"

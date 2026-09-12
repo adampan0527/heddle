@@ -14,10 +14,13 @@
 import { useEffect } from "react";
 
 import { ConnectionStatus } from "./components/ConnectionStatus.tsx";
+import { Kanban } from "./components/Kanban.tsx";
 import { ProjectSwitcher } from "./components/ProjectSwitcher.tsx";
 import { getDefaultWsClient } from "./lib/ws-client.ts";
+import { useUiStore } from "./lib/state/ui-store.ts";
 
 export default function App(): React.ReactElement {
+  const activeProjectId = useUiStore((s) => s.activeProjectId);
   useEffect(() => {
     const ws = getDefaultWsClient();
     ws.connect();
@@ -37,12 +40,7 @@ export default function App(): React.ReactElement {
       </header>
 
       <main className="flex flex-1 flex-col gap-4 p-6">
-        <section
-          aria-label="Kanban placeholder"
-          className="flex flex-1 items-center justify-center rounded border border-dashed border-zinc-700 text-zinc-500"
-        >
-          Kanban (feat-035)
-        </section>
+        <Kanban projectId={activeProjectId} />
         <section
           aria-label="Dialog placeholder"
           className="flex h-32 items-center justify-center rounded border border-dashed border-zinc-700 text-zinc-500"
