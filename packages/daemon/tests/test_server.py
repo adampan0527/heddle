@@ -111,6 +111,17 @@ class TestConfig(unittest.TestCase):
         with self.assertRaises(ValueError):
             config_from_env({"HEDDLE_DAEMON_PORT": "not-a-number"})
 
+    def test_config_from_env_reads_recursion_limit(self):
+        from heddle_daemon.server import get_recursion_limit_from_env
+        cfg = config_from_env({"HEDDLE_RECURSION_LIMIT": "75"})
+        self.assertEqual(cfg.recursion_limit, 75)
+        self.assertEqual(get_recursion_limit_from_env({"HEDDLE_RECURSION_LIMIT": "75"}), 75)
+
+    def test_config_from_env_default_recursion_limit(self):
+        """Default is 200 if the env var is absent (D-052)."""
+        cfg = config_from_env({})
+        self.assertEqual(cfg.recursion_limit, 200)
+
 
 class TestEnvelope(unittest.TestCase):
     """JsonEnvelope parse / build round-trip + version gating."""

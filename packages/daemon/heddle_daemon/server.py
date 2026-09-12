@@ -57,6 +57,10 @@ import websockets
 from websockets.asyncio.server import ServerConnection, serve
 
 from heddle_common import logging as _logging
+from heddle_daemon.agent_runtime import (
+    RECURSION_LIMIT_ENV_VAR,
+    get_max_steps_from_env,
+)
 from heddle_daemon.checkpointing import ProjectCheckpointStore
 
 __all__ = [
@@ -69,6 +73,7 @@ __all__ = [
     "JsonEnvelopeError",
     "MessageHandler",
     "build_envelope",
+    "get_recursion_limit_from_env",
     "parse_envelope",
     "run_daemon",
 ]
@@ -92,6 +97,7 @@ ENVELOPE_VERSION_MAX: Final[int] = 1
 ENV_PORT: Final[str] = "HEDDLE_DAEMON_PORT"
 ENV_HOST: Final[str] = "HEDDLE_DAEMON_HOST"
 ENV_PROJECT_PATH: Final[str] = "HEDDLE_DAEMON_PROJECT_PATH"
+ENV_RECURSION_LIMIT: Final[str] = "HEDDLE_RECURSION_LIMIT"
 
 
 # ---------- config ----------
@@ -112,6 +118,12 @@ class DaemonConfig:
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
     project_path: Optional[Path] = None
+    # Per-thread LLM-turn ceiling (D-052 / feat-022). Resolved from
+    # HEDDLE_RECURSION_LIMIT at construction time via
+    # ``get_recursion_limit_from_env``. Exposed on the daemon so
+    # WS handlers (feat-030) can pass it to AgentRuntime; the env
+    # var is read once at startup, not per-call.
+    recursion_limit: int = 200
 
     def __post_init__(self) -> None:
         # Validate eagerly so the constructor is the single chokepoint
@@ -175,7 +187,8 @@ def _is_loopback(host: str) -> bool:
 
 
 def config_from_env(env: dict[str, str] | None = None) -> DaemonConfig:
-    """Read HEDDLE_DAEMON_PORT / HEDDLE_DAEMON_HOST / HEDDLE_DAEMON_PROJECT_PATH.
+    """Read HEDDLE_DAEMON_PORT / HEDDLE_DAEMON_HOST / HEDDLE_DAEMON_PROJECT_PATH
+    / HEDDLE_RECURSION_LIMIT.
 
     `env` defaults to `os.environ`; tests pass an explicit dict to
     avoid mutating the real environment.
@@ -193,7 +206,24 @@ def config_from_env(env: dict[str, str] | None = None) -> DaemonConfig:
     project_path: Optional[Path] = None
     if project_raw:
         project_path = Path(project_raw)
-    return DaemonConfig(host=host_raw, port=port, project_path=project_path)
+    recursion_limit = get_recursion_limit_from_env(src)
+    return DaemonConfig(
+        host=host_raw,
+        port=port,
+        project_path=project_path,
+        recursion_limit=recursion_limit,
+    )
+
+
+def get_recursion_limit_from_env(env: dict[str, str] | None = None) -> int:
+    """Read HEDDLE_RECURSION_LIMIT (default 200 per feat-022 / D-052).
+
+    Thin wrapper around ``heddle_daemon.agent_runtime.get_max_steps_from_env``
+    so the daemon has a single named helper for supervisor / CLI code
+    to call. The actual env-var parsing lives in the agent_runtime
+    module (single source of truth).
+    """
+    return get_max_steps_from_env(env)
 
 
 # ---------- envelope (T-010) ----------
@@ -605,6 +635,13 @@ def run_daemon(argv: list[str] | None = None) -> int:
              "When set, the daemon brings up a per-project LangGraph "
              "checkpoint store at <project-path>/.heddle/checkpoints.db on start.",
     )
+    parser.add_argument(
+        "--recursion-limit",
+        type=int,
+        default=None,
+        help="Per-thread LLM turn ceiling (default: HEDDLE_RECURSION_LIMIT or 200). "
+             "Surfaced as RecursionLimitError(cause='recursion_limit') per D-052.",
+    )
     args = parser.parse_args(argv)
 
     # Precedence: CLI flag > env var > defaults.
@@ -615,6 +652,8 @@ def run_daemon(argv: list[str] | None = None) -> int:
         src[ENV_HOST] = args.host
     if args.project_path is not None:
         src[ENV_PROJECT_PATH] = str(args.project_path)
+    if args.recursion_limit is not None:
+        src[ENV_RECURSION_LIMIT] = str(args.recursion_limit)
 
     try:
         cfg = config_from_env(src)

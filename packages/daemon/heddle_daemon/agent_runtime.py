@@ -48,8 +48,9 @@ tested without bringing in the LLM SDK.
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Optional, Sequence, Union
+from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence, Union
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
@@ -61,11 +62,28 @@ from heddle_daemon.sandbox import ToolDispatchMiddleware
 # ---------- constants ----------
 
 
-# Maximum number of LLM turns (tool_use OR end_turn) per single
+# Default upper bound on LLM turns (tool_use OR end_turn) per single
 # run_agent_step invocation. Acts as the recursion guardrail (D-052)
-# at the Python level; LangGraph's own ``recursion_limit`` is set on
-# the StateGraph (feat-022) and surfaces separately.
-DEFAULT_MAX_STEPS: int = 50
+# at the Python level. Override via the HEDDLE_RECURSION_LIMIT env
+# var (per feat-022). The default of 200 matches the LangGraph
+# ``recursion_limit`` the spec calls for, so an agent moved between
+# the hand-rolled runtime and a compiled StateGraph hits the same
+# boundary.
+DEFAULT_MAX_STEPS: int = 200
+
+# Env-var name for the runtime's max_steps ceiling (D-052 / feat-022).
+# Single source of truth: the daemon reads this when constructing the
+# runtime, and tests can monkeypatch ``os.environ`` to assert the
+# value flow end-to-end.
+RECURSION_LIMIT_ENV_VAR: str = "HEDDLE_RECURSION_LIMIT"
+
+# Default LLM-call retry budget and backoff (D-041 / feat-022). Three
+# attempts total; backoff is exponential 1s -> 2s -> 4s (the third
+# attempt fires immediately after the second 2s sleep fails). Tests
+# can shrink these via the ``max_retries`` / ``backoff_base_seconds``
+# fields on AgentRuntime.
+DEFAULT_MAX_LLM_RETRIES: int = 3
+DEFAULT_LLM_BACKOFF_BASE_SECONDS: float = 1.0
 
 
 SYSTEM_PROMPT: str = (
@@ -135,6 +153,41 @@ class RecursionLimitError(AgentRuntimeError):
         self.cause = "recursion_limit"
 
 
+class LLMRetryExhaustedError(AgentRuntimeError):
+    """Raised when the LLM retry budget (D-041 / feat-022) is exhausted.
+
+    The daemon surfaces this with ``cause="llm_retry_exhausted"`` so
+    the WS layer / UI can render a structured failure ("the LLM
+    service returned errors 3 times in a row") rather than parsing
+    the underlying exception's message. The original last exception
+    is preserved as ``__cause__`` for debugging.
+    """
+
+    def __init__(self, attempts: int, last_exception: BaseException) -> None:
+        super().__init__(
+            f"LLM call failed after {attempts} attempts; "
+            f"last error: {type(last_exception).__name__}: {last_exception}"
+        )
+        self.attempts = attempts
+        self.cause = "llm_retry_exhausted"
+        self.last_exception = last_exception
+
+
+# Exceptions we deliberately do NOT retry. (KeyboardInterrupt,
+# SystemExit, asyncio.CancelledError, plus our own runtime errors
+# — a RecursionLimitError on the LLM call would loop the retry
+# forever.) Everything else (``Exception``) is treated as transient
+# and retried per D-041. Defined AFTER the error classes so the
+# forward references resolve.
+_NON_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    KeyboardInterrupt,
+    SystemExit,
+    asyncio.CancelledError,
+    RecursionLimitError,
+    LLMRetryExhaustedError,
+)
+
+
 # ---------- the runtime ----------
 
 
@@ -151,12 +204,12 @@ class AgentRuntime:
         runtime = AgentRuntime(
             checkpoint_store=daemon.checkpoint_store,
             sandbox=sandbox_middleware,
+            max_steps=get_max_steps_from_env(),
         )
         result = await runtime.run_agent_step(
             thread_id="feat-019",
             user_message="Add a README.",
             llm=build_chat_model(config),
-            max_steps=50,
         )
 
     For tests:
@@ -166,12 +219,23 @@ class AgentRuntime:
             thread_id="feat-019",
             user_message="Read README.md",
             llm=FakeLLM(load_fixture("read_then_done.json")),
+            max_steps=50,
         )
     """
 
     checkpoint_store: ProjectCheckpointStore
     sandbox: ToolDispatchMiddleware
     system_prompt: str = SYSTEM_PROMPT
+    # Per-invocation ceiling on LLM turns (D-052). Set at construction
+    # so the daemon reads ``HEDDLE_RECURSION_LIMIT`` once at startup
+    # rather than per call. Per-call ``max_steps`` overrides still
+    # work for tests that want a smaller budget.
+    max_steps: int = DEFAULT_MAX_STEPS
+    # Per-LLM-call retry budget (D-041). 3 attempts with exponential
+    # backoff (1s -> 2s -> 4s by default). Set to 1 to disable
+    # retries entirely (e.g. in latency-sensitive tests).
+    max_retries: int = DEFAULT_MAX_LLM_RETRIES
+    backoff_base_seconds: float = DEFAULT_LLM_BACKOFF_BASE_SECONDS
 
     def __post_init__(self) -> None:
         if not isinstance(self.checkpoint_store, ProjectCheckpointStore):
@@ -183,6 +247,14 @@ class AgentRuntime:
             raise TypeError(
                 "sandbox must be a ToolDispatchMiddleware; "
                 f"got {type(self.sandbox).__name__}"
+            )
+        if self.max_steps <= 0:
+            raise ValueError(f"max_steps must be > 0; got {self.max_steps}")
+        if self.max_retries < 1:
+            raise ValueError(f"max_retries must be >= 1; got {self.max_retries}")
+        if self.backoff_base_seconds < 0:
+            raise ValueError(
+                f"backoff_base_seconds must be >= 0; got {self.backoff_base_seconds}"
             )
 
     # ---- public API ----
@@ -306,7 +378,7 @@ class AgentRuntime:
         # what to do with the result. Either way, jump back to the
         # top of the loop.
         steps_taken = 0
-        while steps_taken < DEFAULT_MAX_STEPS:
+        while steps_taken < self.max_steps:
             steps_taken += 1
             response = await self._call_llm(llm, messages)
             messages.append(self._response_to_message(response))
@@ -322,7 +394,7 @@ class AgentRuntime:
                     "content": tool_result_text,
                 })
         await self._save_state(canonical_thread, messages)
-        raise RecursionLimitError(steps_taken=steps_taken, max_steps=DEFAULT_MAX_STEPS)
+        raise RecursionLimitError(steps_taken=steps_taken, max_steps=self.max_steps)
 
     # ---- checkpoint I/O ----
 
@@ -382,9 +454,25 @@ class AgentRuntime:
                 "checkpoint_ns": "",
             }
         }
+        # Monotonic checkpoint id per thread. The id is
+        # ``f"{thread_id}-{len(messages):020d}"`` so:
+        #   * lexicographic sort matches numeric sort (20-digit
+        #     zero-pad, well past any realistic message count);
+        #   * the "latest" lookup (LangGraph's aget_tuple picks
+        #     max-by-id) returns the save with the most messages,
+        #     which is the most recent because we always save AFTER
+        #     appending;
+        #   * the id is stable across processes / runtime instances:
+        #     a resumed daemon hits the same id sequence as the
+        #     daemon that wrote the thread.
+        # An earlier scheme used ``id(messages)`` (a random memory
+        # address), which made ids non-monotonic across reallocated
+        # lists and produced intermittent "stale save" reads. Don't
+        # regress to that.
+        checkpoint_id = _format_checkpoint_id(thread_id, len(messages))
         checkpoint = {
             "v": 1,
-            "id": f"{thread_id}-{id(messages)}",  # monotonic per save
+            "id": checkpoint_id,
             "ts": _now_iso(),
             "channel_values": {"messages": list(messages)},
             "channel_versions": {"messages": len(messages)},
@@ -405,12 +493,92 @@ class AgentRuntime:
 
     # ---- helpers ----
 
-    @staticmethod
     async def _call_llm(
+        self,
         llm: LLMCallable,
         messages: list[dict[str, Any]],
     ) -> LLMResponse:
-        """Call the LLM, normalising sync + async callables.
+        """Call the LLM with retry + exponential backoff (D-041 / feat-022).
+
+        Wraps :meth:`_call_llm_once` (the raw single-attempt call) in
+        a retry loop. On any exception (network error, transient
+        LLM provider failure, etc.), the call is retried after a
+        sleep of ``backoff_base_seconds * 2**(attempt-1)`` — so the
+        default settings produce 1s, 2s, 4s gaps. After
+        ``max_retries`` failed attempts, the original exception is
+        wrapped in :class:`LLMRetryExhaustedError` with
+        ``cause="llm_retry_exhausted"`` and raised.
+
+        The retry budget is per-LLM-call, NOT per-loop-iteration: a
+        successful LLM call followed by a tool dispatch and another
+        LLM call starts a fresh retry budget. This matches D-041
+        ("daemon-internal LLM/tool retries").
+        """
+        last_exc: BaseException | None = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = await self._call_llm_once(llm, messages)
+                if attempt > 1:
+                    _logging.info(
+                        component="agent_runtime",
+                        event="llm_retry_succeeded",
+                        msg=(
+                            f"LLM call succeeded on attempt {attempt} "
+                            f"after {attempt - 1} prior failure(s)"
+                        ),
+                        attempt=attempt,
+                    )
+                return response
+            except _NON_RETRYABLE_EXCEPTIONS:
+                # Programming errors should not retry; let them
+                # propagate to the caller / supervisor so the bug
+                # surfaces immediately rather than masking itself as
+                # a transient LLM failure.
+                raise
+            except Exception as exc:
+                last_exc = exc
+                if attempt < self.max_retries:
+                    delay = self.backoff_base_seconds * (2 ** (attempt - 1))
+                    _logging.warn(
+                        component="agent_runtime",
+                        event="llm_retry",
+                        msg=(
+                            f"LLM call attempt {attempt}/{self.max_retries} "
+                            f"failed: {type(exc).__name__}: {exc}; "
+                            f"sleeping {delay:.3f}s before retry"
+                        ),
+                        attempt=attempt,
+                        max_retries=self.max_retries,
+                        delay_seconds=delay,
+                        error_type=type(exc).__name__,
+                        error_message=str(exc),
+                    )
+                    if delay > 0:
+                        await asyncio.sleep(delay)
+                    continue
+                # attempt == max_retries: fall through to exhaustion.
+                break
+        # All attempts failed.
+        assert last_exc is not None  # loop body always sets it on failure
+        _logging.error(
+            component="agent_runtime",
+            event="llm_retry_exhausted",
+            msg=(
+                f"LLM call failed after {self.max_retries} attempts; "
+                f"raising LLMRetryExhaustedError"
+            ),
+            max_retries=self.max_retries,
+            error_type=type(last_exc).__name__,
+            error_message=str(last_exc),
+        )
+        raise LLMRetryExhaustedError(self.max_retries, last_exc) from last_exc
+
+    @staticmethod
+    async def _call_llm_once(
+        llm: LLMCallable,
+        messages: list[dict[str, Any]],
+    ) -> LLMResponse:
+        """Call the LLM once, normalising sync + async callables.
 
         Three callable shapes are supported:
           * async function returning LLMResponse
@@ -531,14 +699,88 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _format_checkpoint_id(thread_id: str, message_count: int) -> str:
+    """Format a monotonic checkpoint id for a thread + message count.
+
+    Format: ``f"{thread_id}-{message_count:020d}"``. The 20-digit
+    zero-pad means lexicographic comparison matches numeric
+    comparison up to 10**20 saves per thread — well past any
+    realistic message count.
+
+    Why message count and not a per-instance counter? Because
+    LangGraph's table key is ``(thread_id, checkpoint_ns,
+    checkpoint_id)`` and ``aget_tuple`` returns the
+    lexicographically-largest id for the thread. Two separate
+    runtime instances (the one that wrote the thread + the one
+    that resumed it) MUST produce a non-colliding, monotonic id
+    sequence. Using ``len(messages)`` at save time satisfies both:
+    every save appends at least one message, so within one thread
+    the message count is strictly increasing across all saves by
+    any process.
+    """
+    return f"{thread_id}-{message_count:020d}"
+
+
+def get_max_steps_from_env(env: Mapping[str, str] | None = None) -> int:
+    """Read the recursion-limit ceiling from the environment.
+
+    Reads ``HEDDLE_RECURSION_LIMIT``; on missing / non-integer /
+    non-positive value, falls back to :data:`DEFAULT_MAX_STEPS` and
+    logs a warning. The fallback is intentionally lenient (we never
+    crash the daemon over a typo in an env var) but loud (the warning
+    appears in every structured-log stream).
+
+    feat-022 single-source-of-truth helper: the daemon, the CLI, and
+    tests all read through this function rather than parsing the env
+    var inline.
+    """
+    src = os.environ if env is None else env
+    raw = src.get(RECURSION_LIMIT_ENV_VAR)
+    if raw is None:
+        return DEFAULT_MAX_STEPS
+    try:
+        value = int(raw)
+    except ValueError:
+        _logging.warn(
+            component="agent_runtime",
+            event="recursion_limit_env_invalid",
+            msg=(
+                f"{RECURSION_LIMIT_ENV_VAR}={raw!r} is not an integer; "
+                f"using DEFAULT_MAX_STEPS={DEFAULT_MAX_STEPS}"
+            ),
+            env_var=RECURSION_LIMIT_ENV_VAR,
+            raw_value=raw,
+        )
+        return DEFAULT_MAX_STEPS
+    if value <= 0:
+        _logging.warn(
+            component="agent_runtime",
+            event="recursion_limit_env_nonpositive",
+            msg=(
+                f"{RECURSION_LIMIT_ENV_VAR}={value} must be > 0; "
+                f"using DEFAULT_MAX_STEPS={DEFAULT_MAX_STEPS}"
+            ),
+            env_var=RECURSION_LIMIT_ENV_VAR,
+            raw_value=value,
+        )
+        return DEFAULT_MAX_STEPS
+    return value
+
+
 __all__ = [
+    "DEFAULT_MAX_LLM_RETRIES",
+    "DEFAULT_LLM_BACKOFF_BASE_SECONDS",
     "DEFAULT_MAX_STEPS",
+    "RECURSION_LIMIT_ENV_VAR",
     "SYSTEM_PROMPT",
     "AgentRuntime",
     "AgentRuntimeError",
     "LLMCallable",
+    "LLMRetryExhaustedError",
     "LLMResponse",
     "RecursionLimitError",
     "SYSTEM_PROMPT",
     "ToolCall",
+    "get_max_steps_from_env",
+    "_format_checkpoint_id",
 ]

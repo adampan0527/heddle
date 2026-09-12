@@ -20,14 +20,19 @@ from heddle_common.fake_llm import (
 )
 
 from heddle_daemon.agent_runtime import (
+    DEFAULT_MAX_LLM_RETRIES,
     DEFAULT_MAX_STEPS,
+    RECURSION_LIMIT_ENV_VAR,
     SYSTEM_PROMPT,
     AgentRuntime,
     AgentRuntimeError,
+    LLMRetryExhaustedError,
     LLMResponse,
     RecursionLimitError,
     ToolCall,
     _coerce_llm_response,
+    _format_checkpoint_id,
+    get_max_steps_from_env,
 )
 from heddle_daemon.checkpointing import ProjectCheckpointStore
 from heddle_daemon.sandbox import SandboxConfig, ToolDispatchMiddleware
@@ -501,6 +506,259 @@ class TestSandboxRejection(unittest.IsolatedAsyncioTestCase):
                 result = await runtime_ro.run_agent_step("feat-019", "write a.txt", llm)
                 self.assertEqual(result.content, "I see — read-only.")
                 self.assertEqual(sandbox_ro.rejected_readonly_count, 1)
+            finally:
+                await store.close()
+
+
+# =========================================================================
+# feat-022: recursion_limit guardrail (D-052) + daemon-internal LLM retry
+# (D-041). HEDDLE_RECURSION_LIMIT → max_steps; exponential backoff on
+# LLM failures; LLMRetryExhaustedError after max_retries.
+# =========================================================================
+
+
+class TestRecursionLimitAt200Steps(unittest.IsolatedAsyncioTestCase):
+    """feat-022 step 5: a fixture that loops forever must trigger
+    RecursionLimitError at max_steps=200 (the spec value, which is
+    also the LangGraph recursion_limit the design references)."""
+
+    async def test_infinite_loop_hits_recursion_limit_at_200_steps(self):
+        with _TempProject() as proj:
+            (proj / "f.txt").write_text("x", encoding="utf-8")
+            runtime, store, _ = await _setup_runtime(proj)
+            try:
+                llm = FakeLLM(
+                    [ScriptedResponse(
+                        tool_calls=(ScriptedToolCall(name="read", args={"path": "f.txt"}),),
+                        stop_reason="tool_use",
+                    )] * 1000,
+                    loop=True,
+                )
+                with self.assertRaises(RecursionLimitError) as ctx:
+                    await runtime.run_agent_step(
+                        "feat-019", "loop forever", llm, max_steps=200
+                    )
+                err = ctx.exception
+                self.assertEqual(err.cause, "recursion_limit")
+                self.assertEqual(err.max_steps, 200)
+                self.assertEqual(err.steps_taken, 200)
+            finally:
+                await store.close()
+
+
+class TestRecursionLimitEnvVar(unittest.TestCase):
+    """feat-022 step 1: HEDDLE_RECURSION_LIMIT env var is the single
+    chokepoint for the max_steps ceiling."""
+
+    def test_default_when_env_missing(self):
+        self.assertEqual(get_max_steps_from_env({}), DEFAULT_MAX_STEPS)
+
+    def test_explicit_value(self):
+        self.assertEqual(get_max_steps_from_env({RECURSION_LIMIT_ENV_VAR: "50"}), 50)
+
+    def test_invalid_value_falls_back_to_default(self):
+        self.assertEqual(get_max_steps_from_env({RECURSION_LIMIT_ENV_VAR: "abc"}), DEFAULT_MAX_STEPS)
+
+    def test_zero_value_falls_back_to_default(self):
+        self.assertEqual(get_max_steps_from_env({RECURSION_LIMIT_ENV_VAR: "0"}), DEFAULT_MAX_STEPS)
+
+    def test_negative_value_falls_back_to_default(self):
+        self.assertEqual(get_max_steps_from_env({RECURSION_LIMIT_ENV_VAR: "-5"}), DEFAULT_MAX_STEPS)
+
+
+class TestFormatCheckpointId(unittest.TestCase):
+    """The id must be lexicographically monotonic across saves."""
+
+    def test_basic_format(self):
+        self.assertEqual(
+            _format_checkpoint_id("feat-019", 5),
+            "feat-019-00000000000000000005",
+        )
+
+    def test_lex_order_matches_numeric_order(self):
+        ids = [_format_checkpoint_id("feat-019", n) for n in (1, 10, 100, 1000)]
+        self.assertEqual(ids, sorted(ids))
+
+    def test_zero_pads_large_counts(self):
+        self.assertEqual(
+            _format_checkpoint_id("t", 1_000_000_000_000),
+            "t-00000001000000000000",
+        )
+
+
+class TestLLMRetry(unittest.IsolatedAsyncioTestCase):
+    """feat-022 step 3+4: exponential backoff 1s->2s->4s, max 3 attempts;
+    on exhaustion, structured LLMRetryExhaustedError per D-041."""
+
+    async def test_retry_succeeds_on_third_attempt_after_two_transient_failures(self):
+        """feat-022 step 6: 'a mock LLM that fails twice then succeeds;
+        assert 3 calls happened with correct delays'."""
+        with _TempProject() as proj:
+            runtime, store, _ = await _setup_runtime(proj)
+            try:
+                call_times: list[float] = []
+
+                async def flaky(messages):
+                    call_times.append(asyncio.get_running_loop().time())
+                    if len(call_times) < 3:
+                        raise RuntimeError(f"transient failure #{len(call_times)}")
+                    return LLMResponse(content="finally", stop_reason="end_turn")
+
+                # 50ms backoff base so the test runs in <1s. The
+                # exponential 0.05 -> 0.10 pattern is what the
+                # production 1s -> 2s pattern scales to.
+                runtime.backoff_base_seconds = 0.05
+
+                response = await runtime._call_llm(flaky, [])
+                self.assertEqual(response.content, "finally")
+                self.assertEqual(len(call_times), 3)
+                # Delay between attempt 1 and 2: ~0.05s; 2 and 3: ~0.10s.
+                # We assert each delay was at least 80% of its
+                # nominal value (Windows asyncio.sleep can wake up a
+                # few ms early). Exponential backoff is verified by
+                # d2 > d1 — no need for a strict 2x ratio that's
+                # brittle under scheduler jitter.
+                d1 = call_times[1] - call_times[0]
+                d2 = call_times[2] - call_times[1]
+                self.assertGreaterEqual(d1, 0.04)
+                self.assertGreaterEqual(d2, 0.08)
+                self.assertGreater(d2, d1)
+            finally:
+                await store.close()
+
+    async def test_all_failures_raises_structured_error(self):
+        with _TempProject() as proj:
+            runtime, store, _ = await _setup_runtime(proj)
+            try:
+                runtime.backoff_base_seconds = 0.01  # fast
+                call_count = 0
+
+                async def always_fails(messages):
+                    nonlocal call_count
+                    call_count += 1
+                    raise ConnectionError("LLM provider down")
+
+                with self.assertRaises(LLMRetryExhaustedError) as ctx:
+                    await runtime._call_llm(always_fails, [])
+                err = ctx.exception
+                self.assertEqual(err.cause, "llm_retry_exhausted")
+                self.assertEqual(err.attempts, 3)
+                self.assertEqual(call_count, 3)
+                self.assertIsInstance(err.last_exception, ConnectionError)
+            finally:
+                await store.close()
+
+    async def test_default_max_retries_is_three(self):
+        """The spec calls for 3 attempts; verify the default matches."""
+        self.assertEqual(DEFAULT_MAX_LLM_RETRIES, 3)
+
+    async def test_max_retries_one_disables_retry(self):
+        with _TempProject() as proj:
+            runtime, store, _ = await _setup_runtime(proj)
+            try:
+                runtime.max_retries = 1
+                runtime.backoff_base_seconds = 0.01
+                call_count = 0
+
+                async def always_fails(messages):
+                    nonlocal call_count
+                    call_count += 1
+                    raise RuntimeError("nope")
+
+                with self.assertRaises(LLMRetryExhaustedError) as ctx:
+                    await runtime._call_llm(always_fails, [])
+                self.assertEqual(call_count, 1)
+                self.assertEqual(ctx.exception.attempts, 1)
+            finally:
+                await store.close()
+
+    async def test_non_retryable_exceptions_propagate_immediately(self):
+        """Programming errors (e.g. RecursionLimitError) must not be
+        retried \u2014 retrying them would loop forever or mask the bug."""
+        with _TempProject() as proj:
+            runtime, store, _ = await _setup_runtime(proj)
+            try:
+                call_count = 0
+
+                async def raises_rl(messages):
+                    nonlocal call_count
+                    call_count += 1
+                    raise RecursionLimitError(steps_taken=1, max_steps=1)
+
+                with self.assertRaises(RecursionLimitError):
+                    await runtime._call_llm(raises_rl, [])
+                # Retried: only 1 call (the exception short-circuits).
+                self.assertEqual(call_count, 1)
+            finally:
+                await store.close()
+
+    async def test_cancellation_not_retried(self):
+        """asyncio.CancelledError must propagate so the runtime
+        shutdown path works cleanly."""
+        with _TempProject() as proj:
+            runtime, store, _ = await _setup_runtime(proj)
+            try:
+                async def raise_cancel(messages):
+                    raise asyncio.CancelledError()
+
+                with self.assertRaises(asyncio.CancelledError):
+                    await runtime._call_llm(raise_cancel, [])
+            finally:
+                await store.close()
+
+
+class TestLLMRetryExhaustedError(unittest.TestCase):
+    def test_is_agent_runtime_error(self):
+        err = LLMRetryExhaustedError(attempts=3, last_exception=RuntimeError("x"))
+        self.assertIsInstance(err, AgentRuntimeError)
+        self.assertEqual(err.cause, "llm_retry_exhausted")
+        self.assertEqual(err.attempts, 3)
+        self.assertIsInstance(err.last_exception, RuntimeError)
+        self.assertIn("3 attempts", str(err))
+        self.assertIn("RuntimeError", str(err))
+
+    def test_cause_is_d_041_compliant(self):
+        """D-041 mandates cause='llm_retry_exhausted' so the UI / WS
+        layer can render a structured failure without parsing prose."""
+        err = LLMRetryExhaustedError(3, RuntimeError("boom"))
+        self.assertEqual(err.cause, "llm_retry_exhausted")
+
+
+class TestRetryIntegrationWithRun(unittest.IsolatedAsyncioTestCase):
+    """End-to-end: a flaky LLM heals mid-loop; the loop still completes."""
+
+    async def test_flaky_llm_with_recovery_completes_run(self):
+        with _TempProject() as proj:
+            (proj / "f.txt").write_text("hello", encoding="utf-8")
+            runtime, store, _ = await _setup_runtime(proj)
+            try:
+                runtime.backoff_base_seconds = 0.01
+                # 2 failures, then 1 tool_use, then 1 end_turn = 4 calls.
+                # The retry budget is per-LLM-call, so the tool_use
+                # call after recovery starts a fresh 3-attempt budget.
+                call_count = 0
+
+                async def flaky_then_ok(messages):
+                    nonlocal call_count
+                    call_count += 1
+                    if call_count == 1:
+                        raise RuntimeError("transient 1")
+                    if call_count == 2:
+                        raise RuntimeError("transient 2")
+                    if call_count == 3:
+                        return LLMResponse(
+                            tool_calls=(ToolCall(
+                                id="c1", name="read", args={"path": "f.txt"},
+                            ),),
+                            stop_reason="tool_use",
+                        )
+                    return LLMResponse(content="done.", stop_reason="end_turn")
+
+                result = await runtime.run_agent_step(
+                    "feat-019", "Read f.txt", flaky_then_ok
+                )
+                self.assertEqual(result.content, "done.")
+                self.assertEqual(call_count, 4)
             finally:
                 await store.close()
 

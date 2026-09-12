@@ -572,12 +572,20 @@
         "Test: with HEDDLE_FAKE_LLM=1 and a fixture that loops forever; assert recursion_limit triggers at 200 steps and surfaces a structured failure",
         "Test: with a mock LLM that fails twice then succeeds; assert 3 calls happened with correct delays"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-019"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-022",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1417,8 +1425,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 17,
-    "failing": 37,
+    "passing": 18,
+    "failing": 36,
     "in_progress": 1,
     "blocked": 0,
     "deferred": 0,
