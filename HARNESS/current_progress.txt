@@ -111,12 +111,12 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 
 SUMMARY
 -------
-Total features: 56
-Passing: 13
-Failing: 43
+Total features: 54
+Passing: 14
+Failing: 40
 In progress: 0
-Blocked: 1
-Deferred: 1
+Blocked: 0
+Deferred: 0
 Last updated: 2026-09-12
 
 ### SESSION 6 — 2026-09-12
@@ -131,3 +131,15 @@ Last updated: 2026-09-12
 
 ---
 
+### SESSION 7 — 2026-09-12
+
+
+**Worked on:** feat-018 @ 723733a
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-018 (14 / 54 total)
+
+**Notes:** feat-018: ProjectCheckpointStore + daemon project_path wiring. 36 new daemon tests (66 total). feat-014/019/024/047 unblocked; next: feat-019 self-written agent runtime.
+
+---
