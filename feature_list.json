@@ -995,12 +995,20 @@
         "Drag a card from blocked to ready: rejected (blocked features are locked per D-016)",
         "Test: drag a ready card to in_progress; assert the kanban shows it there and the API call succeeded"
       ],
-      "status": "in_progress",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-032"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-035",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1518,9 +1526,9 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 29,
-    "failing": 25,
-    "in_progress": 1,
+    "passing": 30,
+    "failing": 24,
+    "in_progress": 0,
     "blocked": 0,
     "deferred": 0,
     "last_updated": "2026-09-13"
