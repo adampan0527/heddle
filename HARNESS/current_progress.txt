@@ -112,8 +112,8 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 SUMMARY
 -------
 Total features: 54
-Passing: 24
-Failing: 30
+Passing: 26
+Failing: 28
 In progress: 0
 Blocked: 0
 Deferred: 0
@@ -223,5 +223,17 @@ Last updated: 2026-09-12
 **Features now passing:** feat-030 (24 / 54 total)
 
 **Notes:** feat-030 WS protocol: event-stream + commands on top of feat-027's loopback WS. TS: protocol.ts event union, types.ts envelopes, supervisor.ts sendCommand + daemon-event emitter, main.ts event->logger. Py: routes.py event_emitter + 4 new handlers + async dialog_turn_stub, server.py per-conn emitter binding. +6 TS, +7 Py tests. 33 TS + 242 Py green. Unblocked: 029/031/048/050.
+
+---
+### SESSION 15 — 2026-09-12
+
+
+**Worked on:** feat-032 @ df1731cd32dfd3c0d002ca2a7e9544ee87133b91
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-032 (26 / 54 total)
+
+**Notes:** Web skeleton: Vite+React+Tailwind v4+TS strict. New packages/shared/ for envelope+domain types (ApiOk/Project/Feature/DraftCard/DialogResponse). Vite /api+/ws proxy to localhost:5174. Zustand activeProjectId + TanStack Query useProjects(). ProjectSwitcher real data-driven <select>. tsconfig adds noUncheckedIndexedAccess + exactOptionalPropertyTypes. Vitest jsdom; migrated logger.test.ts to Vitest globals. 15 web + 50 node tests pass. Unblocks feat-033/034/035/051.
 
 ---
