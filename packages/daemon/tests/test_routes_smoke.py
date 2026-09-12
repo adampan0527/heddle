@@ -56,12 +56,27 @@ async def _round_trip(
     *,
     timeout: float = 2.0,
 ) -> JsonEnvelope:
-    """Send one envelope; wait for the matching response; parse it."""
+    """Send one envelope; wait for the matching response; parse it.
+
+    feat-030: with event-emitting handlers the daemon may push one or
+    more ``type: "event"`` envelopes before the terminal response.
+    We loop on recv, discarding event frames, until we see a
+    response whose ``req_id`` echoes the request — that's the
+    envelope the caller wants. Anything else (a different
+    unsolicited event, a malformed frame) is silently skipped so a
+    bug elsewhere doesn't cascade into this helper.
+    """
     url = f"ws://127.0.0.1:{daemon.bound_port}/ws"
     async with websockets.connect(url) as conn:
         await conn.send(env.to_json())
-        raw = await asyncio.wait_for(conn.recv(), timeout=timeout)
-        return parse_envelope(raw)
+        deadline = timeout
+        while True:
+            raw = await asyncio.wait_for(conn.recv(), timeout=deadline)
+            received = parse_envelope(raw)
+            if received.type == "event":
+                # Unsolicited — drain and keep waiting.
+                continue
+            return received
 
 
 def _make_feature_list(project_dir: Path, features: list[dict[str, Any]]) -> Path:

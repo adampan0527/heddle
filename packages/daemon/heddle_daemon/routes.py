@@ -142,6 +142,14 @@ class RoutesError(Exception):
 # ---------- public handler ----------
 
 
+# Callback signature for unsolicited event emission (feat-030).
+# The closure is invoked from a route handler to push an event
+# envelope onto the active WS connection; it must NOT raise — a
+# failed send should be logged, not propagated, because the handler
+# is already on its way to building a response envelope.
+EventEmitter = Optional["Any"]  # Callable[[dict[str, Any]], Awaitable[None]]
+
+
 @dataclass
 class RouteHandler:
     """Dispatches business envelopes to the right heddle_common helper.
@@ -150,6 +158,13 @@ class RouteHandler:
     except for the ``on_remove`` hook, which the daemon binds at
     startup so ``project_remove`` can cascade log cleanup + close
     the per-project LangGraph checkpoint store.
+
+    feat-030 adds an optional ``event_emitter`` callable so
+    per-feature commands (``start_feature``, ``stop_feature``,
+    ``dialog_turn``) can push progress events onto the WS before
+    returning their terminal response. The callable is wired by
+    ``Daemon._handle_connection`` after constructing the handler;
+    tests pass a stub that collects events into a list.
 
     Tests construct a default ``RouteHandler()`` and call
     ``dispatch_envelope`` directly with synthetic envelopes. The
@@ -174,6 +189,14 @@ class RouteHandler:
     # resolver to redirect to a tmp dir.
     feature_list_path_for: Any = None
 
+    # feat-030: optional async callable invoked by handlers to push
+    # an unsolicited event envelope onto the WS. Receives a plain
+    # dict (the event envelope body minus the ``type: "event"``
+    # wrapper which the emitter adds). When None, ``emit_event``
+    # is a no-op — keeps legacy tests that don't care about events
+    # working byte-for-byte.
+    event_emitter: EventEmitter = None
+
     def __post_init__(self) -> None:
         if self.projects_path is None:
             self.projects_path = default_projects_path()
@@ -184,6 +207,45 @@ class RouteHandler:
                 return _P(project.path) / DEFAULT_FEATURE_LIST_PATH
 
             self.feature_list_path_for = _default
+
+    # ----- event emission (feat-030) -----
+
+    async def emit_event(
+        self,
+        event_name: str,
+        project_id: str,
+        feature_id: Optional[str],
+        payload: dict[str, Any],
+    ) -> None:
+        """Push one unsolicited event envelope onto the WS.
+
+        No-op when ``event_emitter`` is unset (tests). When set, the
+        emitter is responsible for adding the ``v`` + ``type: "event"``
+        envelope wrapper — we just hand it the body fields. Failures
+        are swallowed because we're typically inside a handler that's
+        about to return its terminal response envelope; an event-send
+        failure must not turn a successful operation into an error.
+        """
+        if self.event_emitter is None:
+            return
+        body = {
+            "event": event_name,
+            "project_id": project_id,
+            "feature_id": feature_id,
+            "payload": payload,
+        }
+        try:
+            await self.event_emitter(body)
+        except Exception as exc:  # noqa: BLE001 — emit failures are best-effort
+            _logging.warn(
+                component="daemon",
+                event="event_emit_failed",
+                msg=f"event {event_name!r} emit failed: {exc}",
+                event_name=event_name,
+                project_id=project_id,
+                feature_id=feature_id,
+                error_type=type(exc).__name__,
+            )
 
     # ----- public dispatch -----
 
@@ -219,7 +281,22 @@ class RouteHandler:
                 data = self._feature_transition(env.extra)
                 return self._ok_response(req_id, env.type, data)
             if env.type == "dialog_turn":
-                data = self._dialog_turn_stub(env.extra)
+                data = await self._dialog_turn_stub(env.extra)
+                return self._ok_response(req_id, env.type, data)
+            # feat-030: per-feature command handlers. Each one is a
+            # wire-shape stub right now (validates input + emits a
+            # progress event before the terminal response); feat-031
+            # / feat-044 / feat-019 will fill in the actual LLM
+            # orchestration. The point of feat-030 is the protocol
+            # contract, not the runtime.
+            if env.type == "start_feature":
+                data = await self._start_feature(env.extra)
+                return self._ok_response(req_id, env.type, data)
+            if env.type == "stop_feature":
+                data = await self._stop_feature(env.extra)
+                return self._ok_response(req_id, env.type, data)
+            if env.type == "retry_feature":
+                data = await self._retry_feature(env.extra)
                 return self._ok_response(req_id, env.type, data)
         except RoutesError as exc:
             return self._err_response(req_id, env.type, exc.code, str(exc))
@@ -338,7 +415,7 @@ class RouteHandler:
             "feature": feature_row,
         }
 
-    def _dialog_turn_stub(self, extras: dict[str, Any]) -> dict[str, Any]:
+    async def _dialog_turn_stub(self, extras: dict[str, Any]) -> dict[str, Any]:
         """v0.1 stub — replaced by feat-044 intent classification.
 
         Validates the message envelope and echoes it back as a chat
@@ -346,6 +423,12 @@ class RouteHandler:
         LLM-backed path is in development. The stub deliberately
         returns ``kind: "chat"`` (no draft cards) so feat-040's draft
         tray never lights up for stub replies.
+
+        Async (not sync) because the stub emits a ``dialog_done``
+        event after constructing its reply — feat-030 wires the
+        event_emitter so future streamed-token handlers can sit
+        between the LLM call and the terminal response without a
+        shape change.
         """
         project_id = extras.get("project_id")
         message = extras.get("message")
@@ -364,10 +447,123 @@ class RouteHandler:
         # downstream feature). The lookup ensures a typo'd project_id
         # gets a 404 instead of a stub reply.
         self._lookup_project(project_id)
+        text = f"echo: {message}"
+        # feat-030: emit a dialog_done marker so the Node.js side
+        # sees the symmetric (token... done) shape even for the
+        # stub. A real LLM path will replace this with per-token
+        # dialog_token events.
+        await self.emit_event(
+            "dialog_done",
+            project_id=project_id,
+            feature_id=None,
+            payload={"full_text": text},
+        )
         return {
             "project_id": project_id,
             "kind": "chat",
-            "text": f"echo: {message}",
+            "text": text,
+        }
+
+    # ----- feat-030 per-feature command handlers -----
+
+    async def _start_feature(self, extras: dict[str, Any]) -> dict[str, Any]:
+        """Wire-shape stub for feat-030.
+
+        Validates the payload, marks the feature ``in_progress`` via
+        the shared library (the same mutation the existing
+        ``feature_transition retry`` path uses), and emits the
+        ``feature_attempt_started`` event before returning the
+        response envelope. The actual agent-runtime kick-off is
+        feat-019 / feat-031's job — this handler ships the protocol
+        shape so feat-029 can subscribe to the event stream and
+        feat-031 can fill in the LLM dispatch without changing
+        the wire.
+        """
+        project_id = extras.get("project_id")
+        feature_id = extras.get("feature_id")
+        if not isinstance(project_id, str) or not project_id:
+            raise RoutesError("project_id must be a non-empty string")
+        if not isinstance(feature_id, str) or not feature_id:
+            raise RoutesError("feature_id must be a non-empty string")
+        project = self._lookup_project(project_id)
+        path = self.feature_list_path_for(project)
+        # Bump to in_progress. feat-031's LLM dispatch will follow
+        # from this transition; the event we emit below is the
+        # signal feat-029 fans out to the browser.
+        _safe_fail_call(lambda: _fl_mark_in_progress(path, feature_id))
+        attempt_id = _new_attempt_id()
+        await self.emit_event(
+            "feature_attempt_started",
+            project_id=project_id,
+            feature_id=feature_id,
+            payload={"attempt_id": attempt_id},
+        )
+        return {
+            "project_id": project_id,
+            "feature_id": feature_id,
+            "attempt_id": attempt_id,
+            "status": "in_progress",
+        }
+
+    async def _stop_feature(self, extras: dict[str, Any]) -> dict[str, Any]:
+        """Wire-shape stub for feat-030.
+
+        Validates the payload and emits ``feature_stopped``. The
+        actual signal to the running agent (via the daemon's
+        ``_feature_stop_events`` map) lands in feat-031 once the
+        runtime owns an asyncio.Task per attempt.
+        """
+        project_id = extras.get("project_id")
+        feature_id = extras.get("feature_id")
+        if not isinstance(project_id, str) or not project_id:
+            raise RoutesError("project_id must be a non-empty string")
+        if not isinstance(feature_id, str) or not feature_id:
+            raise RoutesError("feature_id must be a non-empty string")
+        attempt_id = extras.get("attempt_id") or _new_attempt_id()
+        await self.emit_event(
+            "feature_stopped",
+            project_id=project_id,
+            feature_id=feature_id,
+            payload={"attempt_id": attempt_id},
+        )
+        return {
+            "project_id": project_id,
+            "feature_id": feature_id,
+            "attempt_id": attempt_id,
+            "status": "stop_requested",
+        }
+
+    async def _retry_feature(self, extras: dict[str, Any]) -> dict[str, Any]:
+        """Wire-shape stub for feat-030.
+
+        Equivalent to ``feature_transition retry`` but emits a
+        ``feature_attempt_started`` event so the browser-side
+        progress UI can light up. feat-031 will swap the body for
+        the real LLM kick-off; for now this is the
+        protocol-contract proof.
+        """
+        project_id = extras.get("project_id")
+        feature_id = extras.get("feature_id")
+        if not isinstance(project_id, str) or not project_id:
+            raise RoutesError("project_id must be a non-empty string")
+        if not isinstance(feature_id, str) or not feature_id:
+            raise RoutesError("feature_id must be a non-empty string")
+        project = self._lookup_project(project_id)
+        path = self.feature_list_path_for(project)
+        _safe_fail_call(lambda: _fl_mark_in_progress(path, feature_id))
+        attempt_id = _new_attempt_id()
+        await self.emit_event(
+            "feature_attempt_started",
+            project_id=project_id,
+            feature_id=feature_id,
+            payload={"attempt_id": attempt_id},
+        )
+        return {
+            "project_id": project_id,
+            "feature_id": feature_id,
+            "attempt_id": attempt_id,
+            "action": "retry",
+            "status": "in_progress",
         }
 
     # ----- internal helpers -----
@@ -474,6 +670,26 @@ def _projects_error_code(exc: ProjectsError) -> str:
     if "not found" in msg:
         return "not_found"
     return "invalid_input"
+
+
+def _new_attempt_id() -> str:
+    """Return a fresh attempt id (UUID4 hex, 32 chars).
+
+    feat-030 uses this on the daemon side to mint the
+    ``attempt_id`` field that flows through every event and the
+    terminal response envelope. The id is opaque to Node.js /
+    browser — they just round-trip it back so the browser UI can
+    group progress events with the originating command.
+
+    ``uuid.uuid4().hex`` is stdlib-only (no extra dep) and is
+    collision-safe for v0.1's single-process daemon. If we ever
+    distribute the daemon across processes we'll switch to
+    ``uuid.uuid7()`` for time-ordered ids, but that's a v0.2
+    problem.
+    """
+    import uuid as _uuid
+
+    return _uuid.uuid4().hex
 
 
 def _find_feature(data: dict[str, Any], feature_id: str) -> dict[str, Any]:

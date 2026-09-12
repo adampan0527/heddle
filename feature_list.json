@@ -818,13 +818,21 @@
         "Test: send start_feature command; assert daemon begins execution and emits feature_progress events",
         "Test: send stop_feature; assert daemon halts and emits feature_done with outcome=stopped"
       ],
-      "status": "in_progress",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-017",
         "feat-027"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-030",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1465,9 +1473,9 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 23,
-    "failing": 31,
-    "in_progress": 1,
+    "passing": 24,
+    "failing": 30,
+    "in_progress": 0,
     "blocked": 0,
     "deferred": 0,
     "last_updated": "2026-09-12"

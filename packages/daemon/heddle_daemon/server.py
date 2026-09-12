@@ -686,6 +686,24 @@ class Daemon:
                     # legacy / test consumers.
                     handled = False
                     if self._routes_enabled and self._routes is not None:
+                        # feat-030: bind the per-connection event
+                        # emitter closure on the route handler so
+                        # feature commands can push progress events
+                        # onto THIS client's WS. The closure captures
+                        # ``conn``; we rebuild a full envelope here
+                        # so the emitter-side body stays a plain dict
+                        # matching the TS ``DaemonEventRecord`` shape.
+                        async def _emit_event(body: dict[str, Any]) -> None:
+                            env_obj = build_envelope(
+                                "event",
+                                event=body["event"],
+                                project_id=body["project_id"],
+                                feature_id=body.get("feature_id"),
+                                payload=body.get("payload", {}),
+                            )
+                            await conn.send(env_obj.to_json())
+
+                        self._routes.event_emitter = _emit_event
                         try:
                             resp = await self._routes.dispatch_envelope(env)
                         except Exception as exc:
