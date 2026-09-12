@@ -112,9 +112,9 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 SUMMARY
 -------
 Total features: 54
-Passing: 19
-Failing: 35
-In progress: 1
+Passing: 21
+Failing: 33
+In progress: 0
 Blocked: 0
 Deferred: 0
 Last updated: 2026-09-12
@@ -177,5 +177,17 @@ Last updated: 2026-09-12
 **Features now passing:** feat-023 (19 / 54 total)
 
 **Notes:** feat-023: heddle_daemon/llm.py factory for 4 providers (anthropic/openai/bedrock/ollama). API-key chokepoint via configs_io.resolve_api_key (T-015); LLMConfigError cause='llm_config_error' on missing. Bedrock reads AWS_REGION/AWS_DEFAULT_REGION; Ollama ignores api_key_env. 18 new tests, 208 daemon total. feat-031 (LLM resolution at start_feature) + feat-044 (intent classification) unblocked.
+
+---
+### SESSION 11 — 2026-09-12
+
+
+**Worked on:** feat-014 @ bc4a46a9521486a1750aca8a5a06b8c116606cbf
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-014, feat-026 (21 / 54 total)
+
+**Notes:** feat-014: project_cascade + AgentRuntime.stop_event + Daemon._on_project_removed. 17 new tests (10+4+3). feat-026: Fastify skeleton in packages/node/ (diverge from feat-026 steps' packages/cli since that's Python). 8 new vitest tests pass. TypeBox provider deferred to feat-028 (needs fastify-type-provider-typebox). CI not wired for packages/node/ yet.
 
 ---
