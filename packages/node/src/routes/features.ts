@@ -57,6 +57,12 @@ const FeatureRowSchema = Type.Object({
   enhances: Type.Union([Type.String(), Type.Null()]),
   superseded_by: Type.Union([Type.String(), Type.Null()]),
   implementation_model: Type.Union([Type.String(), Type.Null()]),
+  // feat-037: deferred features carry an optional ISO date. Field is
+  // optional so older daemons (which omit it) still validate. New
+  // daemons always emit it when status === "deferred".
+  deferred_until: Type.Optional(
+    Type.Union([Type.String(), Type.Null()]),
+  ),
 });
 
 const FeatureListResponseSchema = Type.Object({

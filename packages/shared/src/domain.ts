@@ -62,6 +62,10 @@ export interface Feature {
   enhances: string | null;
   superseded_by: string | null;
   implementation_model: string | null;
+  /** ISO date (YYYY-MM-DD). Set by `mark-deferred`; cleared on any
+   *  other status transition. Optional on the wire so old daemons
+   *  still load (feat-016). */
+  deferred_until?: string | null;
 }
 
 /** Dialog response kind from POST /api/projects/:id/dialog. */

@@ -112,8 +112,8 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 SUMMARY
 -------
 Total features: 54
-Passing: 32
-Failing: 22
+Passing: 33
+Failing: 21
 In progress: 0
 Blocked: 0
 Deferred: 0
@@ -295,5 +295,17 @@ Last updated: 2026-09-13
 **Features now passing:** feat-036 (32 / 54 total)
 
 **Notes:** Bottom-lane rendering (D-056): Done/Someday/Archive collapsible lanes. kanban-store extended with KanbanLaneId + lanesExpanded (NOT persisted). KanbanLane view-only (no useDroppable). Lane headers always show counts; collapsed count badge has title attr with top 3 titles joined by newline. columnOf returns null for passing/deferred; laneOf maps to done/someday/archive. 22 new tests; 85 total green. handoff_check 10/10.
+
+---
+### SESSION 21 — 2026-09-13
+
+
+**Worked on:** feat-037 @ fc67aaea617adfa3de27c3d0a4fa57301fbe70fb
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-037 (33 / 54 total)
+
+**Notes:** feat-037: KanbanCard visual treatment per spec. KIND_DISPLAY + kindDisplay(); STATUS_EXTRAS + statusExtras(). Added deferred_until to Feature TS interface + TypeBox wire schema (forward-only). bugfix: orange left-edge stripe + wrench in top-right. blocked/deferred/passing: lock/clock/check + text extras. 22 new tests; 107 total web green. pnpm web+node typecheck clean. handoff_check 10/10. Unblocked: feat-056.
 
 ---
