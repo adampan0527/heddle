@@ -112,9 +112,9 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 SUMMARY
 -------
 Total features: 54
-Passing: 29
-Failing: 25
-In progress: 1
+Passing: 31
+Failing: 23
+In progress: 0
 Blocked: 0
 Deferred: 0
 Last updated: 2026-09-13
@@ -271,5 +271,17 @@ Last updated: 2026-09-13
 **Features now passing:** feat-035 (29 / 54 total)
 
 **Notes:** Three-column kanban with @dnd-kit/core. decideDrop() extracted as pure rule for testing. 12 new tests, 53 total green. Single-active + blocked-lock rules enforced server-and-client-side.
+
+---
+### SESSION 19 — 2026-09-13
+
+
+**Worked on:** feat-015 @ da4f4e6
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-015 (31 / 54 total)
+
+**Notes:** Python RotatingFileSink + Node.js hand-rolled sink + daemon/supervisor wiring. Env vars HEDDLE_LOG_MAX_BYTES/HEDDLE_LOG_BACKUP_COUNT shared across both runtimes. feat-025 unblocked.
 
 ---
