@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tools._feature_io import FEATURE_LIST_PATH, STATUSES, VALID_CATEGORIES, VALID_PRIORITIES, fail, load_features, status_of  # noqa: E402
-from tools._feature_state import REGRESS_REASON_MIN_CHARS, cmd_add, cmd_mark_blocked, cmd_mark_deferred, cmd_mark_in_progress, cmd_mark_passing, cmd_mark_regressed, cmd_next_feature, cmd_remove, cmd_update_metadata  # noqa: E402
+from tools._feature_state import REGRESS_REASON_MIN_CHARS, cmd_add, cmd_mark_blocked, cmd_mark_deferred, cmd_mark_in_progress, cmd_mark_passing, cmd_mark_regressed, cmd_next_feature, cmd_remove, cmd_set_steps, cmd_update_metadata  # noqa: E402
 from tools._file_lock import file_lock  # noqa: E402
 
 ADD_ALLOWED_STATUSES = tuple(s for s in STATUSES if s != "passing")
@@ -187,6 +187,24 @@ def build_parser() -> argparse.ArgumentParser:
                             "self-dependency is rejected.")
     p_add.set_defaults(func=_with_lock(cmd_add))
 
+    p_set_steps = sub.add_parser(
+        "set-steps",
+        help="Replace the `steps` array on an existing feature. "
+             "Does NOT change status / category / priority / depends_on / kind / "
+             "any extended field added in feat-010. Use `add` for first-creation; "
+             "use `set-steps` for follow-up edits of the test plan. "
+             "Per CODE_STYLE.md 'Data integrity via scripts', this is the ONLY "
+             "sanctioned way to mutate an existing feature's `steps`.",
+    )
+    p_set_steps.add_argument("feature_id")
+    p_set_steps.add_argument("--step", action="append", default=[], metavar="STEP",
+                             help="Replace the steps with this single step. Repeatable. "
+                                  "Mutually exclusive with --steps-file.")
+    p_set_steps.add_argument("--steps-file", type=Path, default=None, metavar="PATH",
+                             help="Read the new steps from a UTF-8 text file, one per line. "
+                                  "Mutually exclusive with --step.")
+    p_set_steps.set_defaults(func=_with_lock(cmd_set_steps))
+
     p_meta = sub.add_parser("update-metadata",
                             help="Recompute metadata (use after manual edits).")
     p_meta.set_defaults(func=_with_lock(cmd_update_metadata))
@@ -210,7 +228,7 @@ def main(argv: list[str] | None = None) -> int:
         fail("no command given. Try: list / status / next-feature / "
              "mark-passing / mark-in-progress / mark-blocked / "
              "mark-deferred / mark-regressed / add / remove / "
-             "update-metadata")
+             "set-steps / update-metadata")
     parser = build_parser()
     args = parser.parse_args(argv)
     args.func(args)

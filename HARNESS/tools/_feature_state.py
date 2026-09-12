@@ -70,6 +70,21 @@ def cmd_add(args: argparse.Namespace) -> None:
     )
 
 
+def cmd_set_steps(args: argparse.Namespace) -> None:
+    """Replace the ``steps`` array on an existing feature (no-op on fields).
+
+    See :func:`heddle_common.feature_list_io.set_steps` for validation
+    rules. Per CODE_STYLE.md "Data integrity via scripts", this is the
+    ONLY sanctioned way to mutate an existing feature's ``steps``.
+    """
+    _fl.set_steps(
+        None,
+        args.feature_id,
+        step=args.step or [],
+        steps_file=args.steps_file,
+    )
+
+
 def cmd_update_metadata(_args: argparse.Namespace) -> None:
     _fl.update_metadata(None)
 

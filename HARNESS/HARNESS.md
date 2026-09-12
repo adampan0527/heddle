@@ -275,6 +275,7 @@ python HARNESS/tools/feature_list.py mark-regressed <feature_id> --reason "..." 
 
 # Creation / metadata
 python HARNESS/tools/feature_list.py add <feature_id> <category> <description> [--status STATUS] [--priority high|medium|low] [--step STEP ...] [--steps-file PATH]
+python HARNESS/tools/feature_list.py set-steps <feature_id> [--step STEP ...] [--steps-file PATH]
 python HARNESS/tools/feature_list.py update-metadata                           # recompute metadata counters
 ```
 
@@ -296,6 +297,15 @@ values are rejected before any write. If neither `--step` nor
 `--steps-file` is given, the feature is still created but a warning is
 printed to stderr — a feature without steps is not end-to-end testable,
 so fill them in before the first coding session.
+
+`set-steps <feature_id> [--step ... | --steps-file ...]` is the follow-up
+editor for an EXISTING feature's `steps` array (same validation as
+`add`: max count, max chars, placeholder rejection). It does NOT
+touch `status` / `category` / `priority` / `depends_on` / `kind` / any
+of the extended feat-010 fields. Per CODE_STYLE.md "Data integrity
+via scripts", it is the only sanctioned way to mutate an existing
+feature's `steps` — direct edits to `feature_list.json` are
+forbidden.
 
 **Rules:**
 

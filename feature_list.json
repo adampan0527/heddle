@@ -801,7 +801,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 15,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-029",
@@ -852,12 +852,17 @@
       "category": "functional",
       "description": "LLM config resolution: when a feature is started, Node.js passes the feature's implementation_model (locked config name) to the daemon; daemon looks up the config in ~/.heddle/configs.yaml and instantiates the LLM via feat-023 factory",
       "steps": [
-        "In feat-030 start_feature command: include implementation_model field",
-        "Daemon side: implement a get_llm(config_name) function that reads configs.yaml and returns a LangChain BaseChatModel instance",
-        "Use this LLM in agent_runtime per feat-019",
-        "Test: create a configs.yaml with a fake named config; call get_llm(name); assert it returns a valid chat model instance"
+        "Step 1: Add resolve_feature_llm_config(name_or_none, configs_path) in packages/daemon/heddle_daemon/llm_config.py; on None return first list_configs() entry with source=\"default\"; on string call get_config and return source=\"explicit\"; on missing/unknown raise LLMConfigError with cause=\"llm_config_error\"",
+        "Step 2: Add build_llm_for_feature(cfg, *, fixture_root, env) in agent_runtime.py wrapping fake_llm_or_real(real_factory=lambda: build_chat_model(cfg, env=env), fixture_path=fixture_root/<feature_id>.json if fixture_root else None, env=env); export from __all__",
+        "Step 3: Extend DaemonConfig with configs_path (default ~/.heddle/configs.yaml) and fixture_root (default ~/.heddle/fake_fixtures); honor HEDDLE_CONFIGS_PATH and HEDDLE_FAKE_LLM_FIXTURE_ROOT in run_daemon; thread through enable_routes() into RouteHandler",
+        "Step 4: In RouteHandler, _start_feature and _retry_feature read the feature row, resolve implementation_model via llm_config.resolve_feature_llm_config, build the LLM via build_llm_for_feature, register it on RouteHandler._attempt_llms keyed by attempt_id, emit llm_resolved event (payload {attempt_id, config_name, source}) between feature_attempt_started and the terminal response; on LLMConfigError return ok=false error.code=\"llm_config_error\" and emit no llm_resolved event",
+        "Step 5: Node.js protocol.ts: add implementation_model?: string|null to BrowserCommandEnvelope; parseBrowserCommand strips the field for start_feature / retry_feature only",
+        "Step 6: Node.js routes/features.ts: add POST /api/projects/:id/features/:fid/start and POST .../retry endpoints forwarding implementation_model to the daemon via forwardOrFail; StartOrRetryBodySchema TypeBox",
+        "Step 7: Tests: test_llm_config.py (explicit hit, null default, unknown name, missing file, fake-LLM short-circuit); test_routes_start_feature.py (WS round-trip with explicit/null/unknown); extend test_commands_protocol.py to assert both feature_attempt_started AND llm_resolved events emitted in order",
+        "Step 8: Validation: handoff_check, ruff check, ruff format --check, pnpm --filter node typecheck, pytest packages/common/heddle_common/tests + packages/daemon/tests -v",
+        "Step 9: Mark feat-031 passing via feature_list.py mark-passing only after Steps 1-8 green end-to-end"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "priority": "high",
       "depends_on": [
         "feat-011",
@@ -890,7 +895,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 15,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-032",
@@ -1491,10 +1496,10 @@
     "total_features": 54,
     "passing": 26,
     "failing": 28,
-    "in_progress": 0,
+    "in_progress": 1,
     "blocked": 0,
     "deferred": 0,
-    "last_updated": "2026-09-12"
+    "last_updated": "2026-09-13"
   },
   "schema_version": 1
 }

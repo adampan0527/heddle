@@ -696,3 +696,62 @@ def remove(path: Path | str | None, feature_id: str, *, force: bool = False) -> 
     data["features"].remove(feature)
     recompute_metadata(data)
     save(path, data)
+
+
+def set_steps(
+    path: Path | str | None,
+    feature_id: str,
+    *,
+    step: list[str] | tuple[str, ...] = (),
+    steps_file: Path | str | None = None,
+) -> None:
+    """Replace the ``steps`` array on an existing feature.
+
+    Validation mirrors :func:`add` for the steps themselves:
+      - ``step`` and ``steps_file`` are mutually exclusive.
+      - len(steps) <= STEPS_MAX.
+      - every step is a string, <= STEP_MAX_CHARS after CR/LF strip,
+        and not a placeholder per :func:`_is_placeholder_step`.
+      - empty step list is permitted (a feature may legitimately have
+        no end-to-end test plan; the warning is informational).
+
+    The function does NOT change ``status``, ``category``, ``priority``,
+    ``depends_on``, ``kind``, or any of the extended fields added in
+    feat-010 — it only replaces the ``steps`` array. Use :func:`add`
+    for first-creation and :func:`set_steps` for follow-up edits of
+    the test plan.
+
+    Per CODE_STYLE.md "Data integrity via scripts", this is the ONLY
+    sanctioned way to mutate an existing feature's ``steps`` —
+    direct edits to ``feature_list.json`` are forbidden.
+
+    Raises SystemExit via :func:`fail` on validation errors.
+    """
+    if not ID_REGEX.fullmatch(feature_id):
+        fail(
+            f"feature_id {feature_id!r} must match {ID_REGEX.pattern} "
+            f"(start with a letter; then letters/digits/_/-)"
+        )
+    steps = _resolve_steps(list(step), steps_file)
+    if len(steps) > STEPS_MAX:
+        fail(f"too many steps ({len(steps)}); max is {STEPS_MAX}")
+    for i, step_str in enumerate(steps):
+        if not isinstance(step_str, str):
+            fail(f"step #{i} must be a string; got {type(step_str).__name__}")
+        cleaned = step_str.rstrip("\r\n")
+        if len(cleaned) > STEP_MAX_CHARS:
+            fail(f"step #{i} is {len(cleaned)} chars; max is {STEP_MAX_CHARS}")
+        if _is_placeholder_step(cleaned):
+            fail(
+                f"step #{i} is a placeholder ({cleaned!r}); "
+                "author a real, verifiable step before setting steps."
+            )
+        steps[i] = cleaned
+    data = load(path)
+    feature = _find_feature(data, feature_id)
+    if feature is None:
+        fail(f"feature {feature_id!r} not found")
+    _ensure_extras(feature)
+    feature["steps"] = steps
+    recompute_metadata(data)
+    save(path, data)

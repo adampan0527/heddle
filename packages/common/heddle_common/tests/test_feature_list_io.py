@@ -798,6 +798,129 @@ class TestBackwardCompat(unittest.TestCase):
         self.assertEqual(parsed.get("failing"), "2")
 
 
+class TestSetSteps(unittest.TestCase):
+    """feat-031 — `feature_list_io.set_steps` + `set-steps` CLI subcommand.
+
+    Validation mirrors `add`:
+      - len(steps) <= STEPS_MAX
+      - each step <= STEP_MAX_CHARS, not a placeholder
+      - feature must exist
+    The function MUST NOT touch status / category / priority / depends_on /
+    kind / extended fields. Per CODE_STYLE.md "Data integrity via scripts",
+    `set_steps` is the only sanctioned way to mutate an existing
+    feature's `steps`.
+    """
+
+    def setUp(self):
+        self.tmp = Path(sys.argv[0]).parent / "_test_set_steps.json"
+        # Seed a fresh feature_list with one pending feature. `add`
+        # requires the file to already exist (it loads before mutating);
+        # write a minimal fixture first.
+        self.tmp.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "features": [],
+                    "metadata": {
+                        "total_features": 0,
+                        "passing": 0,
+                        "failing": 0,
+                        "in_progress": 0,
+                        "blocked": 0,
+                        "deferred": 0,
+                        "last_updated": "2026-09-13",
+                    },
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        fl.add(
+            self.tmp,
+            feature_id="feat-target",
+            category="functional",
+            description="target for set_steps",
+            step=["placeholder step 1"],
+            implementation_model="anthropic-claude-sonnet",
+        )
+
+    def tearDown(self):
+        if self.tmp.exists():
+            self.tmp.unlink()
+
+    # ---- happy paths ----
+
+    def test_set_steps_replaces_array(self):
+        fl.set_steps(self.tmp, "feat-target", step=["new step A", "new step B"])
+        feat = next(
+            f for f in fl.load(self.tmp)["features"] if f["id"] == "feat-target"
+        )
+        self.assertEqual(feat["steps"], ["new step A", "new step B"])
+
+    def test_set_steps_via_steps_file(self):
+        steps_path = Path(sys.argv[0]).parent / "_test_set_steps_input.txt"
+        try:
+            steps_path.write_text(
+                "from a file\n\nfrom a file line 2\n",
+                encoding="utf-8",
+            )
+            fl.set_steps(self.tmp, "feat-target", steps_file=steps_path)
+            feat = next(
+                f for f in fl.load(self.tmp)["features"] if f["id"] == "feat-target"
+            )
+            # Blank lines are skipped; CR/LF stripped.
+            self.assertEqual(feat["steps"], ["from a file", "from a file line 2"])
+        finally:
+            if steps_path.exists():
+                steps_path.unlink()
+
+    # ---- field preservation ----
+
+    def test_set_steps_does_not_touch_other_fields(self):
+        before = fl.load(self.tmp)
+        before_feat = next(
+            f for f in before["features"] if f["id"] == "feat-target"
+        )
+        before_snapshot = {k: v for k, v in before_feat.items() if k != "steps"}
+
+        fl.set_steps(self.tmp, "feat-target", step=["only the steps changed"])
+
+        after_feat = next(
+            f for f in fl.load(self.tmp)["features"] if f["id"] == "feat-target"
+        )
+        after_snapshot = {k: v for k, v in after_feat.items() if k != "steps"}
+        self.assertEqual(before_snapshot, after_snapshot)
+
+    # ---- validation errors ----
+
+    def test_set_steps_unknown_feature_fails(self):
+        with self.assertRaises(SystemExit):
+            fl.set_steps(self.tmp, "feat-nope", step=["x"])
+
+    def test_set_steps_too_many_steps_fails(self):
+        too_many = [f"step {i}" for i in range(fl.STEPS_MAX + 1)]
+        with self.assertRaises(SystemExit):
+            fl.set_steps(self.tmp, "feat-target", step=too_many)
+
+    def test_set_steps_placeholder_rejected(self):
+        with self.assertRaises(SystemExit):
+            fl.set_steps(self.tmp, "feat-target", step=["TODO"])
+
+    def test_set_steps_over_max_chars_rejected(self):
+        big = "x" * (fl.STEP_MAX_CHARS + 1)
+        with self.assertRaises(SystemExit):
+            fl.set_steps(self.tmp, "feat-target", step=[big])
+
+    # ---- empty list is allowed ----
+
+    def test_set_steps_empty_list_is_allowed(self):
+        fl.set_steps(self.tmp, "feat-target", step=[])
+        feat = next(
+            f for f in fl.load(self.tmp)["features"] if f["id"] == "feat-target"
+        )
+        self.assertEqual(feat["steps"], [])
+
+
 def argparse_namespace_stub():
     """Return an empty argparse.Namespace.
 
