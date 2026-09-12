@@ -532,12 +532,20 @@
         "For full: pass through without checks",
         "Test: set sandbox_level=read-only; attempt Write; assert it returns sandbox-rejected synthetic result and no file is created"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-020"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-021",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1401,8 +1409,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 15,
-    "failing": 39,
+    "passing": 16,
+    "failing": 38,
     "in_progress": 1,
     "blocked": 0,
     "deferred": 0,
