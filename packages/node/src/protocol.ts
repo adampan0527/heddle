@@ -190,6 +190,13 @@ export interface BrowserCommandEnvelope {
   message?: string;
   feature_id?: string;
   hint?: string;
+  // feat-031: explicit per-feature LLM choice. When present on
+  // `start_feature` / `retry_feature`, the daemon resolves it against
+  // the configs registry (`heddle_daemon.llm_config`); when absent
+  // (or null) the daemon falls back to the first registry entry.
+  // Other command types ignore this field — defense in depth so a
+  // misbehaving client can't smuggle it into dialog_turn / stop_feature.
+  implementation_model?: string | null;
   [extra: string]: unknown;
 }
 
@@ -227,12 +234,41 @@ export function parseBrowserCommand(
   const message = obj["message"];
   const featureId = obj["feature_id"];
   const hint = obj["hint"];
+  const implModelRaw = obj["implementation_model"];
 
   if (type === "dialog_turn") {
     if (typeof message !== "string" || message.length === 0) return null;
   } else {
     // start_feature | stop_feature | retry_feature
     if (typeof featureId !== "string" || featureId.length === 0) return null;
+    // feat-031: ``implementation_model`` is only meaningful for the
+    // two execution-start commands. ``stop_feature`` ignores it; if a
+    // client sends it on the wrong type, we silently drop it (the
+    // executor never sees it). Validating here keeps the wire narrow
+    // without rejecting well-formed legacy clients that don't know
+    // about feat-031.
+    if (
+      implModelRaw !== undefined &&
+      type !== "start_feature" &&
+      type !== "retry_feature"
+    ) {
+      // Drop the field silently — the command is still valid, we just
+      // don't propagate the irrelevant override. Returning null would
+      // reject the whole envelope, which is too strict for a
+      // forward-compat case.
+      // (Fall through; the envelope builder below will not include
+      // implementation_model because we conditionally assign it.)
+    }
+    // Validate the type of implementation_model when present on
+    // start_feature / retry_feature.
+    if (
+      (type === "start_feature" || type === "retry_feature") &&
+      implModelRaw !== undefined &&
+      implModelRaw !== null &&
+      typeof implModelRaw !== "string"
+    ) {
+      return null;
+    }
   }
 
   const envelope: BrowserCommandEnvelope = {
@@ -246,6 +282,18 @@ export function parseBrowserCommand(
     envelope.feature_id = featureId as string;
     if (type === "retry_feature" && typeof hint === "string") {
       envelope.hint = hint;
+    }
+    // feat-031: propagate implementation_model only for execution-start
+    // commands. ``null`` means "use the default" (the daemon's
+    // fallback path); a string means "use this named config";
+    // ``undefined`` (not sent) means "let the daemon decide from
+    // feature_list.json".
+    if (type === "start_feature" || type === "retry_feature") {
+      if (implModelRaw === null) {
+        envelope.implementation_model = null;
+      } else if (typeof implModelRaw === "string") {
+        envelope.implementation_model = implModelRaw;
+      }
     }
   }
   return envelope;

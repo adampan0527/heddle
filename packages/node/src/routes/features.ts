@@ -1,14 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * REST routes for ``/api/projects/:id/features*`` — feat-028.
+ * REST routes for ``/api/projects/:id/features*`` — feat-028 + feat-031.
  *
- * Two endpoints:
+ * Endpoints:
  *
- *   GET  /api/projects/:id/features                → list features
- *   POST /api/projects/:id/features/:fid/transition → drive the
- *                                                    5-state machine
- *                                                    (retry / abandon /
- *                                                    mark-done)
+ *   GET  /api/projects/:id/features                    → list features
+ *   POST /api/projects/:id/features/:fid/transition    → drive the
+ *                                                        5-state machine
+ *                                                        (retry | abandon |
+ *                                                        mark-done)
+ *   POST /api/projects/:id/features/:fid/start         → start the
+ *                                                        feature (mark
+ *                                                        in_progress +
+ *                                                        resolve LLM via
+ *                                                        feat-031)
+ *   POST /api/projects/:id/features/:fid/retry         → same as start
+ *                                                        but explicitly
+ *                                                        tagged ``retry``
+ *                                                        for the
+ *                                                        supervisor UI
  *
  * Shares the supervisor-forwarding helper with projects.ts; see that
  * file's header comment for the HTTP status mapping. The
@@ -78,6 +88,19 @@ const TransitionResponseSchema = Type.Object({
 const FeatureParamsSchema = Type.Object({
   id: Type.String({ minLength: 1 }),
   fid: Type.String({ minLength: 1 }),
+});
+
+// feat-031: body for the new /start and /retry endpoints. The body
+// is optional (clients that don't know about feat-031 can POST `{}`
+// and the daemon falls back to the feature's stored
+// ``implementation_model`` from ``feature_list.json``). When present
+// the value may be a string (explicit config name) or null (force
+// the daemon's default-fallback path, ignoring whatever the feature
+// row says).
+const StartOrRetryBodySchema = Type.Object({
+  implementation_model: Type.Optional(
+    Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+  ),
 });
 
 // ---------- plugin ----------
@@ -157,5 +180,58 @@ export const registerFeatureRoutes: FastifyPluginAsync<
       }
       return out.okBody;
     },
+  );
+
+  // feat-031: shared handler factory for /start and /retry. Both
+  // endpoints forward to the daemon's per-feature command handlers
+  // with the body's `implementation_model` field (when present). The
+  // daemon resolves the model against its LLM-config registry and
+  // emits `feature_attempt_started` + `llm_resolved` events back to
+  // the browser over the WS stream.
+  const forwardExecution = async (
+    req: any,
+    reply: any,
+    daemonCommand: "start_feature" | "retry_feature",
+  ): Promise<ApiOk<unknown> | ApiErr> => {
+    const body = req.body ?? {};
+    const payload: Record<string, unknown> = {
+      project_id: req.params.id,
+      feature_id: req.params.fid,
+    };
+    // Only forward the field when the client explicitly set it. The
+    // daemon reads `feature_list.json` directly when the field is
+    // missing, so forwarding `undefined` would be a no-op anyway —
+    // skipping the key keeps the wire narrow for legacy clients.
+    if (Object.prototype.hasOwnProperty.call(body, "implementation_model")) {
+      payload.implementation_model = body.implementation_model;
+    }
+    const out = await forwardOrFail<unknown>(supervisor, daemonCommand, payload, reply);
+    if (!out.ok) {
+      reply.code(out.httpStatus);
+      return out.errBody;
+    }
+    return out.okBody;
+  };
+
+  typed.post(
+    "/api/projects/:id/features/:fid/start",
+    {
+      schema: {
+        params: FeatureParamsSchema,
+        body: StartOrRetryBodySchema,
+      },
+    },
+    async (req: any, reply: any) => forwardExecution(req, reply, "start_feature"),
+  );
+
+  typed.post(
+    "/api/projects/:id/features/:fid/retry",
+    {
+      schema: {
+        params: FeatureParamsSchema,
+        body: StartOrRetryBodySchema,
+      },
+    },
+    async (req: any, reply: any) => forwardExecution(req, reply, "retry_feature"),
   );
 };

@@ -99,6 +99,21 @@ ENV_PORT: Final[str] = "HEDDLE_DAEMON_PORT"
 ENV_HOST: Final[str] = "HEDDLE_DAEMON_HOST"
 ENV_PROJECT_PATH: Final[str] = "HEDDLE_DAEMON_PROJECT_PATH"
 ENV_RECURSION_LIMIT: Final[str] = "HEDDLE_RECURSION_LIMIT"
+# feat-031: env vars for the LLM-config registry path and the fake-LLM
+# fixture root. Both are loopback-only knobs (loopback WS is the
+# daemon's only ingress, see _is_loopback), so a malicious process on
+# the host cannot point them at attacker-controlled paths without
+# already having filesystem access.
+ENV_CONFIGS_PATH: Final[str] = "HEDDLE_CONFIGS_PATH"
+ENV_FAKE_LLM_FIXTURE_ROOT: Final[str] = "HEDDLE_FAKE_LLM_FIXTURE_ROOT"
+
+# feat-031: defaults per T-023 / feat-007. The configs file lives at
+# ``~/.heddle/configs.yaml``; the fake-LLM fixture root is a parallel
+# directory used by HEDDLE_FAKE_LLM mode. Both are expanded lazily in
+# ``DaemonConfig.__post_init__`` so unit tests can pass ``Path`` objects
+# without depending on the user's home directory layout.
+DEFAULT_CONFIGS_PATH: Final[str] = "~/.heddle/configs.yaml"
+DEFAULT_FAKE_LLM_FIXTURE_ROOT: Final[str] = "~/.heddle/fake_fixtures"
 
 
 # ---------- config ----------
@@ -125,6 +140,19 @@ class DaemonConfig:
     # WS handlers (feat-030) can pass it to AgentRuntime; the env
     # var is read once at startup, not per-call.
     recursion_limit: int = 200
+    # feat-031: path to the LLM-config registry (T-023 / feat-011).
+    # Per-feature ``implementation_model`` strings are resolved against
+    # this file via ``heddle_daemon.llm_config``. ``None`` means "use
+    # the default location" (``~/.heddle/configs.yaml``); tests pass
+    # an explicit Path.
+    configs_path: Optional[Path] = None
+    # feat-031: root directory holding per-feature fake-LLM fixtures
+    # (feat-007). Used by ``RouteHandler._start_feature`` /
+    # ``_retry_feature`` to locate ``<fixture_root>/<feature_id>.json``
+    # under HEDDLE_FAKE_LLM=1. ``None`` means "use the default
+    # location" (``~/.heddle/fake_fixtures``); tests pass an explicit
+    # Path.
+    fixture_root: Optional[Path] = None
 
     def __post_init__(self) -> None:
         # Validate eagerly so the constructor is the single chokepoint
@@ -161,6 +189,22 @@ class DaemonConfig:
                     f"the daemon refuses to start against a missing project"
                 )
             object.__setattr__(self, "project_path", resolved)
+        # feat-031: configs_path / fixture_root normalize str → Path but
+        # do NOT validate existence — a missing configs file triggers
+        # ``ensure_configs`` (first-run UX); a missing fixture_root is
+        # only relevant when HEDDLE_FAKE_LLM is set, which the daemon
+        # validates at LLM-build time. We accept None to mean
+        # "default location"; the consumer resolves the default lazily.
+        for field_name in ("configs_path", "fixture_root"):
+            value = getattr(self, field_name)
+            if value is None:
+                continue
+            if not isinstance(value, (str, Path)):
+                raise ValueError(
+                    f"{field_name} must be a str or Path; got {type(value).__name__}"
+                )
+            if isinstance(value, str):
+                object.__setattr__(self, field_name, Path(value).expanduser())
 
 
 def _is_loopback(host: str) -> bool:
@@ -189,7 +233,7 @@ def _is_loopback(host: str) -> bool:
 
 def config_from_env(env: dict[str, str] | None = None) -> DaemonConfig:
     """Read HEDDLE_DAEMON_PORT / HEDDLE_DAEMON_HOST / HEDDLE_DAEMON_PROJECT_PATH
-    / HEDDLE_RECURSION_LIMIT.
+    / HEDDLE_RECURSION_LIMIT / HEDDLE_CONFIGS_PATH / HEDDLE_FAKE_LLM_FIXTURE_ROOT.
 
     `env` defaults to `os.environ`; tests pass an explicit dict to
     avoid mutating the real environment.
@@ -208,11 +252,22 @@ def config_from_env(env: dict[str, str] | None = None) -> DaemonConfig:
     if project_raw:
         project_path = Path(project_raw)
     recursion_limit = get_recursion_limit_from_env(src)
+    # feat-031: configs_path / fixture_root come from env vars when set,
+    # else default to ``None`` so DaemonConfig treats them as
+    # "use the conventional location". Empty-string env vars are
+    # treated as unset (a hand-set ``HEDDLE_CONFIGS_PATH=`` should not
+    # disable the default).
+    configs_raw = src.get(ENV_CONFIGS_PATH)
+    configs_path: Optional[Path] = Path(configs_raw) if configs_raw else None
+    fixture_raw = src.get(ENV_FAKE_LLM_FIXTURE_ROOT)
+    fixture_root: Optional[Path] = Path(fixture_raw) if fixture_raw else None
     return DaemonConfig(
         host=host_raw,
         port=port,
         project_path=project_path,
         recursion_limit=recursion_limit,
+        configs_path=configs_path,
+        fixture_root=fixture_root,
     )
 
 
@@ -459,6 +514,12 @@ class Daemon:
         ``register_message_handler`` guards against later swaps, and
         this method enforces the same invariant by raising if the
         server is already listening.
+
+        feat-031: threads the daemon's ``configs_path`` and
+        ``fixture_root`` into the ``RouteHandler`` so per-feature
+        commands can resolve ``implementation_model`` and locate
+        fake-LLM fixtures. ``None`` falls through to the defaults
+        (``~/.heddle/configs.yaml`` / ``~/.heddle/fake_fixtures``).
         """
         if self._server is not None:
             raise RuntimeError(
@@ -468,7 +529,11 @@ class Daemon:
         if self._routes is None:
             from .routes import RouteHandler
 
-            self._routes = RouteHandler(on_remove=self._on_project_removed)
+            self._routes = RouteHandler(
+                on_remove=self._on_project_removed,
+                configs_path=self._config.configs_path,
+                fixture_root=self._config.fixture_root,
+            )
         self._routes_enabled = True
         return self._routes
 
@@ -815,6 +880,22 @@ def run_daemon(argv: list[str] | None = None) -> int:
         help="Per-thread LLM turn ceiling (default: HEDDLE_RECURSION_LIMIT or 200). "
              "Surfaced as RecursionLimitError(cause='recursion_limit') per D-052.",
     )
+    parser.add_argument(
+        "--configs-path",
+        type=str,
+        default=None,
+        help="Path to the LLM-config registry YAML "
+             "(default: HEDDLE_CONFIGS_PATH or ~/.heddle/configs.yaml). "
+             "Used to resolve per-feature `implementation_model` per feat-031.",
+    )
+    parser.add_argument(
+        "--fixture-root",
+        type=str,
+        default=None,
+        help="Directory holding per-feature fake-LLM fixtures "
+             "(default: HEDDLE_FAKE_LLM_FIXTURE_ROOT or ~/.heddle/fake_fixtures). "
+             "Used under HEDDLE_FAKE_LLM=1 per feat-031 / feat-007.",
+    )
     args = parser.parse_args(argv)
 
     # Precedence: CLI flag > env var > defaults.
@@ -827,6 +908,10 @@ def run_daemon(argv: list[str] | None = None) -> int:
         src[ENV_PROJECT_PATH] = str(args.project_path)
     if args.recursion_limit is not None:
         src[ENV_RECURSION_LIMIT] = str(args.recursion_limit)
+    if args.configs_path is not None:
+        src[ENV_CONFIGS_PATH] = str(args.configs_path)
+    if args.fixture_root is not None:
+        src[ENV_FAKE_LLM_FIXTURE_ROOT] = str(args.fixture_root)
 
     try:
         cfg = config_from_env(src)

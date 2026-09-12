@@ -50,6 +50,7 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence, Union
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
@@ -885,6 +886,75 @@ def get_max_steps_from_env(env: Mapping[str, str] | None = None) -> int:
     return value
 
 
+def build_llm_for_feature(
+    cfg: "Config",
+    *,
+    fixture_path: Path | str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> Any:
+    """Return an LLM callable for the given resolved ``Config``.
+
+    feat-031 chokepoint that wraps
+    :func:`heddle_common.fake_llm.fake_llm_or_real` around
+    :func:`heddle_daemon.llm.build_chat_model`. Two modes:
+
+      * **Fake mode** (HEDDLE_FAKE_LLM is truthy in ``env``):
+        ``fake_llm_or_real`` loads the fixture from ``fixture_path`` and
+        returns a ``FakeLLM``. ``build_chat_model`` is NOT called in
+        this branch — the real provider SDK does not need to be
+        installed, no network call leaves the host, and the API key
+        env var is never read. ``fixture_path`` is REQUIRED under fake
+        mode (the helper raises SystemExit on None to refuse silent
+        fall-through).
+      * **Real mode**: ``fake_llm_or_real`` calls
+        ``real_factory()`` which calls ``build_chat_model(cfg, env=env)``.
+        A missing API key, unknown provider, or missing SDK surfaces as
+        ``LLMConfigError`` (``cause="llm_config_error"``) from
+        ``build_chat_model``.
+
+    Args:
+        cfg: a ``heddle_common.configs_io.Config`` (typically the
+            output of :func:`heddle_daemon.llm_config.resolve_feature_llm_config`).
+        fixture_path: path to the JSON fixture for fake mode. When
+            ``None`` and ``HEDDLE_FAKE_LLM`` is set, the helper raises
+            (refusing silent fall-through). When ``HEDDLE_FAKE_LLM`` is
+            unset, ``fixture_path`` is ignored.
+        env: process-environment mapping. Defaults to ``os.environ``;
+            tests pass an explicit dict to avoid mutating real state.
+
+    Returns:
+        Any ``BaseChatModel`` (or ``FakeLLM`` in fake mode). The agent
+        runtime's :func:`run_agent_step` accepts either via duck-typing
+        on ``invoke`` / ``ainvoke`` (see ``_call_llm_once``).
+    """
+    from heddle_common.fake_llm import fake_llm_or_real
+
+    return fake_llm_or_real(
+        real_factory=lambda: _build_real_chat_model(cfg, env=env),
+        fixture_path=fixture_path,
+        env=env,
+    )
+
+
+def _build_real_chat_model(
+    cfg: "Config",
+    *,
+    env: Mapping[str, str] | None,
+) -> Any:
+    """Wrapper around ``build_chat_model`` for fake_llm_or_real's lazy hook.
+
+    ``fake_llm_or_real`` only invokes ``real_factory`` when not in
+    fake mode, so importing :func:`build_chat_model` lazily here keeps
+    the lightweight common test path (pure fake-mode runs) free of the
+    LangChain SDK import cost. ``build_chat_model`` imports the four
+    provider SDKs on first use, which is wasteful when only fake mode
+    is exercised.
+    """
+    from heddle_daemon.llm import build_chat_model
+
+    return build_chat_model(cfg, env=env)
+
+
 __all__ = [
     "DEFAULT_MAX_LLM_RETRIES",
     "DEFAULT_LLM_BACKOFF_BASE_SECONDS",
@@ -900,6 +970,7 @@ __all__ = [
     "RecursionLimitError",
     "SYSTEM_PROMPT",
     "ToolCall",
+    "build_llm_for_feature",
     "get_max_steps_from_env",
     "_format_checkpoint_id",
 ]

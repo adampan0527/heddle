@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -85,7 +86,16 @@ async def _collect_frames(
 
 class _CommandTestBase(unittest.IsolatedAsyncioTestCase):
     """Common setup: a daemon bound to loopback, routes enabled, one
-    project + one feature_list with a pending feature registered."""
+    project + one feature_list with a pending feature registered.
+
+    feat-031: the daemon's per-feature handlers now resolve the
+    feature's ``implementation_model`` against the LLM-config registry
+    and build the chat model. To keep these tests hermetic (no
+    network, no API keys), we enable ``HEDDLE_FAKE_LLM=1`` for the
+    duration of the test and drop a single ``fixture_root/<fid>.json``
+    next to each project. The daemon's fake-mode chokepoint returns a
+    FakeLLM without ever touching ``build_chat_model``.
+    """
 
     async def asyncSetUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -95,9 +105,33 @@ class _CommandTestBase(unittest.IsolatedAsyncioTestCase):
         self.project_dir = self.tmpdir / "proj-cmd"
         self.project_dir.mkdir()
 
-        self.daemon = Daemon(DaemonConfig(port=0))
+        # feat-031: enable fake-LLM mode for the duration of the test
+        # by setting the env var on ``os.environ`` (the daemon reads it
+        # via ``fake_llm_or_real``). Cleaned up in asyncTearDown.
+        self._saved_env = os.environ.get("HEDDLE_FAKE_LLM")
+        os.environ["HEDDLE_FAKE_LLM"] = "1"
+
+        # Drop a minimal fake-LLM fixture so the daemon's
+        # ``build_llm_for_feature`` finds a fixture to load. The
+        # fixture content is irrelevant — the existing tests only
+        # assert on event/response shape, not on LLM output.
+        self.fixture_root = self.tmpdir / "fixtures"
+        self.fixture_root.mkdir()
+        self.feature_id = "feat-cmd-test"
+        self._drop_fixture(self.feature_id)
+
+        self.daemon = Daemon(
+            DaemonConfig(port=0, fixture_root=self.fixture_root)
+        )
         self.daemon.enable_routes()
         self.daemon._routes.projects_path = self.projects_path
+        # feat-031: also point the route handler's fixture_root at our
+        # tmp dir so _resolve_fixture_path looks there.
+        self.daemon._routes.fixture_root = self.fixture_root
+        # Empty configs registry is OK — None implementation_model will
+        # fall back to the first entry (which ``ensure_configs``
+        # populates with the four default templates).
+        self.daemon._routes.configs_path = None
         await self.daemon.start()
         self.addCleanup(self.daemon.stop)
 
@@ -111,7 +145,6 @@ class _CommandTestBase(unittest.IsolatedAsyncioTestCase):
         # Drop a feature_list.json with one pending feature so the
         # start_feature / retry_feature / stop_feature handlers
         # have something to mutate.
-        self.feature_id = "feat-cmd-test"
         self._drop_feature_list(
             [
                 {
@@ -130,6 +163,40 @@ class _CommandTestBase(unittest.IsolatedAsyncioTestCase):
                     "implementation_model": None,
                 }
             ]
+        )
+
+    async def asyncTearDown(self) -> None:
+        # Restore the original HEDDLE_FAKE_LLM value (or delete the
+        # key if it was unset). Avoids leakage to subsequent tests in
+        # the same process.
+        if self._saved_env is None:
+            os.environ.pop("HEDDLE_FAKE_LLM", None)
+        else:
+            os.environ["HEDDLE_FAKE_LLM"] = self._saved_env
+
+    def _drop_fixture(self, feature_id: str) -> None:
+        """Write a minimal valid fake-LLM fixture for ``feature_id``.
+
+        The fixture has a single scripted response so the
+        ``FakeLLM`` constructor accepts it; the existing tests do
+        not consume the response — they only assert on event/response
+        wire shape.
+        """
+        fx = self.fixture_root / f"{feature_id}.json"
+        fx.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "responses": [
+                        {
+                            "content": "stub",
+                            "tool_calls": [],
+                            "stop_reason": "end_turn",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
         )
 
     def _drop_feature_list(self, features: list[dict[str, Any]]) -> None:
@@ -190,13 +257,14 @@ class TestStartFeature(_CommandTestBase):
         self.assertEqual(data["status"], "in_progress")
         self.assertTrue(data["attempt_id"])
 
-        # Exactly one feature_attempt_started event, emitted BEFORE
-        # the response. The event must carry the same attempt_id the
-        # response echoes back.
+        # At least one feature_attempt_started event, emitted BEFORE
+        # the response. feat-031 adds a follow-up ``llm_resolved``
+        # event right after, so we assert on the *first* event being
+        # ``feature_attempt_started`` rather than on the event count.
         events = [
             f for f in frames[:-1] if f.type == "event"
         ]
-        self.assertEqual(len(events), 1, frames)
+        self.assertGreaterEqual(len(events), 1, frames)
         self.assertEqual(events[0].extra.get("event"), "feature_attempt_started")
         self.assertEqual(events[0].extra.get("project_id"), self.project_id)
         self.assertEqual(events[0].extra.get("feature_id"), self.feature_id)
@@ -229,6 +297,114 @@ class TestStartFeature(_CommandTestBase):
         resp = frames[0]
         self.assertFalse(resp.extra.get("ok"))
         self.assertEqual(resp.extra["error"]["code"], "invalid_input")
+
+
+# ---------- start_feature — feat-031 LLM resolution ----------
+
+
+class TestStartFeatureEmitsLlmResolved(_CommandTestBase):
+    """feat-031: ``start_feature`` emits ``llm_resolved`` after the
+    ``feature_attempt_started`` event when the LLM-config registry
+    resolves successfully.
+
+    The base fixture (``_CommandTestBase``) leaves the feature's
+    ``implementation_model`` as ``None``, which triggers the
+    default-fallback path in ``llm_config.resolve_feature_llm_config``.
+    The ``llm_resolved`` event therefore carries ``source="default"``
+    and ``config_name`` equal to the first registry entry (the
+    ``anthropic-claude-sonnet`` template seeded by
+    ``ensure_configs``).
+    """
+
+    async def test_start_feature_emits_llm_resolved_after_attempt_started(
+        self,
+    ) -> None:
+        env = build_envelope(
+            "start_feature",
+            req_id="lr1",
+            project_id=self.project_id,
+            feature_id=self.feature_id,
+        )
+        frames = await _collect_frames(self.daemon, env)
+        resp = frames[-1]
+        self.assertTrue(resp.extra.get("ok"), resp.extra)
+        data = resp.extra["data"]
+        attempt_id = data["attempt_id"]
+        # The response echoes the resolved config (feat-031 addition).
+        self.assertTrue(data["config_name"])
+        self.assertEqual(data["config_source"], "default")
+
+        events = [f for f in frames[:-1] if f.type == "event"]
+        # Order: feature_attempt_started, llm_resolved.
+        event_names = [f.extra.get("event") for f in events]
+        self.assertEqual(
+            event_names,
+            ["feature_attempt_started", "llm_resolved"],
+            events,
+        )
+        llm_event = events[1]
+        self.assertEqual(llm_event.extra.get("project_id"), self.project_id)
+        self.assertEqual(llm_event.extra.get("feature_id"), self.feature_id)
+        payload = llm_event.extra["payload"]
+        self.assertEqual(payload["attempt_id"], attempt_id)
+        self.assertEqual(payload["config_name"], data["config_name"])
+        self.assertEqual(payload["source"], "default")
+
+    async def test_start_feature_with_explicit_implementation_model(self) -> None:
+        """When the feature lists an explicit ``implementation_model``,
+        ``source`` is ``"explicit"`` and the config_name matches."""
+        fl_path = self.project_dir / "feature_list.json"
+        data = json.loads(fl_path.read_text(encoding="utf-8"))
+        for f in data["features"]:
+            if f["id"] == self.feature_id:
+                f["implementation_model"] = "anthropic-claude-sonnet"
+        fl_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        env = build_envelope(
+            "start_feature",
+            req_id="lr2",
+            project_id=self.project_id,
+            feature_id=self.feature_id,
+        )
+        frames = await _collect_frames(self.daemon, env)
+        resp = frames[-1]
+        self.assertTrue(resp.extra.get("ok"), resp.extra)
+        data = resp.extra["data"]
+        self.assertEqual(data["config_name"], "anthropic-claude-sonnet")
+        self.assertEqual(data["config_source"], "explicit")
+
+    async def test_start_feature_with_unknown_implementation_model_returns_error(
+        self,
+    ) -> None:
+        """Unknown implementation_model → ``ok: false`` envelope with
+        code ``llm_config_error`` and NO ``llm_resolved`` event."""
+        fl_path = self.project_dir / "feature_list.json"
+        data = json.loads(fl_path.read_text(encoding="utf-8"))
+        for f in data["features"]:
+            if f["id"] == self.feature_id:
+                f["implementation_model"] = "does-not-exist"
+        fl_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+        env = build_envelope(
+            "start_feature",
+            req_id="lr3",
+            project_id=self.project_id,
+            feature_id=self.feature_id,
+        )
+        frames = await _collect_frames(self.daemon, env)
+        resp = frames[-1]
+        self.assertEqual(resp.type, "start_feature_response")
+        self.assertFalse(resp.extra.get("ok"), resp.extra)
+        self.assertEqual(
+            resp.extra["error"]["code"], "llm_config_error"
+        )
+
+        events = [f for f in frames[:-1] if f.type == "event"]
+        # feature_attempt_started IS emitted (the user saw the attempt
+        # begin); llm_resolved is NOT (the config check refused before
+        # resolution completed).
+        event_names = [f.extra.get("event") for f in events]
+        self.assertEqual(event_names, ["feature_attempt_started"], events)
 
 
 # ---------- stop_feature ----------
@@ -293,8 +469,11 @@ class TestRetryFeature(_CommandTestBase):
         self.assertEqual(resp.extra["data"]["action"], "retry")
         self.assertEqual(resp.extra["data"]["status"], "in_progress")
 
+        # feat-031: at least one feature_attempt_started event; a
+        # follow-up ``llm_resolved`` event is also expected (see the
+        # sibling TestStartFeature / TestStartFeatureEmitsLlmResolved).
         events = [f for f in frames[:-1] if f.type == "event"]
-        self.assertEqual(len(events), 1)
+        self.assertGreaterEqual(len(events), 1, frames)
         self.assertEqual(events[0].extra.get("event"), "feature_attempt_started")
 
 

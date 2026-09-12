@@ -51,10 +51,12 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 from heddle_common import logging as _logging
+from heddle_common.configs_io import Config, default_configs_path
 from heddle_common.feature_list_io import (
     SchemaVersionError,
     fail as _fl_fail,
@@ -75,6 +77,7 @@ from heddle_common.project_cascade import (
     remove_project_with_cascade,
 )
 
+from .llm import LLMConfigError
 from .server import JsonEnvelope, build_envelope
 
 __all__ = [
@@ -196,6 +199,31 @@ class RouteHandler:
     # is a no-op — keeps legacy tests that don't care about events
     # working byte-for-byte.
     event_emitter: EventEmitter = None
+
+    # feat-031: path to the LLM-config registry (T-023 / feat-011).
+    # ``None`` means "use the conventional location" (resolved lazily
+    # in ``_resolve_configs_path``). Threaded in by ``Daemon.enable_routes``
+    # from ``DaemonConfig.configs_path``; tests pass an explicit Path.
+    configs_path: Any = None
+
+    # feat-031: root directory for fake-LLM fixtures (feat-007).
+    # When ``HEDDLE_FAKE_LLM=1``, ``_start_feature`` / ``_retry_feature``
+    # look up ``<fixture_root>/<feature_id>.json`` and pass it to
+    # ``build_llm_for_feature``. ``None`` means "use the default
+    # location" (resolved lazily in ``_resolve_fixture_path``).
+    fixture_root: Any = None
+
+    # feat-031: per-attempt LLM registry. Keyed by ``attempt_id`` (the
+    # UUID minted by ``_new_attempt_id``); value is
+    # ``(feature_id, llm_callable)``. The actual ``run_agent_step``
+    # invocation lands in a future session (feat-019 wiring); this
+    # dict exists so the resolution + event emission path can be
+    # tested today without driving a full agent loop. The dict is
+    # best-effort cleanup-friendly: ``_drop_attempt_llm`` is exposed
+    # for callers that want to release the LLM reference after the
+    # agent step completes (the chat-model object holds no external
+    # resources in v0.1, so forgetting to call it is benign).
+    _attempt_llms: dict[str, tuple[str, Any]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.projects_path is None:
@@ -466,18 +494,92 @@ class RouteHandler:
 
     # ----- feat-030 per-feature command handlers -----
 
+    # ---- feat-031 helpers (shared by _start_feature / _retry_feature) ----
+
+    def _resolve_configs_path(self) -> Path:
+        """Return the configs registry path, falling back to the default."""
+        if self.configs_path is None:
+            return default_configs_path()
+        p = Path(self.configs_path).expanduser()
+        return p
+
+    def _resolve_fixture_path(self, feature_id: str) -> Path | None:
+        """Return ``<fixture_root>/<feature_id>.json`` or ``None``.
+
+        ``None`` means "no fixture on disk for this feature" — the
+        caller decides whether to fail (real-mode LLM, no fake fallback)
+        or pass ``None`` to ``build_llm_for_feature`` (real-mode LLM,
+        default fixtures directory). Under HEDDLE_FAKE_LLM=1 a missing
+        fixture causes ``fake_llm_or_real`` to raise loudly, which is
+        the desired "test bug, not silent fall-through" behaviour.
+        """
+        if self.fixture_root is None:
+            root = Path("~/.heddle/fake_fixtures").expanduser()
+        else:
+            root = Path(self.fixture_root).expanduser()
+        return root / f"{feature_id}.json"
+
+    def _resolve_and_register_llm(
+        self,
+        *,
+        feature_id: str,
+        implementation_model: str | None,
+        attempt_id: str,
+    ) -> tuple[Config, str]:
+        """Resolve ``implementation_model`` to a registered Config.
+
+        Returns ``(config, source)`` and side-effects: registers the
+        resulting LLM callable on ``self._attempt_llms`` keyed by
+        ``attempt_id`` so a future feat-019 wiring can pick it up.
+
+        Does NOT emit events or build the actual LLM — those are the
+        caller's responsibility. The split lets ``_start_feature`` and
+        ``_retry_feature`` share the resolution logic while keeping
+        their event/response shapes distinct.
+        """
+        from heddle_daemon.agent_runtime import build_llm_for_feature
+        from heddle_daemon.llm_config import resolve_feature_llm_config
+
+        configs_path = self._resolve_configs_path()
+        config, source = resolve_feature_llm_config(
+            implementation_model,
+            configs_path=configs_path,
+        )
+        fixture_path = self._resolve_fixture_path(feature_id)
+        # When HEDDLE_FAKE_LLM is NOT set, ``fixture_path`` is ignored
+        # by ``build_llm_for_feature``; passing the full path is fine.
+        llm = build_llm_for_feature(
+            config,
+            fixture_path=fixture_path,
+        )
+        self._attempt_llms[attempt_id] = (feature_id, llm)
+        return config, source
+
+    def _drop_attempt_llm(self, attempt_id: str) -> None:
+        """Release the LLM reference for ``attempt_id`` (best-effort)."""
+        self._attempt_llms.pop(attempt_id, None)
+
     async def _start_feature(self, extras: dict[str, Any]) -> dict[str, Any]:
-        """Wire-shape stub for feat-030.
+        """Wire-shape stub for feat-030, extended for feat-031.
 
         Validates the payload, marks the feature ``in_progress`` via
-        the shared library (the same mutation the existing
-        ``feature_transition retry`` path uses), and emits the
-        ``feature_attempt_started`` event before returning the
-        response envelope. The actual agent-runtime kick-off is
-        feat-019 / feat-031's job — this handler ships the protocol
-        shape so feat-029 can subscribe to the event stream and
-        feat-031 can fill in the LLM dispatch without changing
-        the wire.
+        the shared library, resolves the feature's
+        ``implementation_model`` against the LLM-config registry, emits
+        ``feature_attempt_started`` and ``llm_resolved`` events in that
+        order, and returns the terminal response envelope.
+
+        feat-031 wire shape changes (additive — feat-030 clients keep
+        working):
+
+          * New ``llm_resolved`` event between ``feature_attempt_started``
+            and the response. Payload: ``{attempt_id, config_name,
+            source}`` where ``source`` is ``"explicit"`` or
+            ``"default"`` (see ``heddle_daemon.llm_config``).
+          * On ``LLMConfigError`` (unknown config name, missing
+            registry) the handler returns ``ok: false, error.code =
+            "llm_config_error"`` and emits no ``llm_resolved``. The
+            ``feature_attempt_started`` event IS still emitted so the
+            browser can render "attempt failed during config resolution".
         """
         project_id = extras.get("project_id")
         feature_id = extras.get("feature_id")
@@ -487,9 +589,6 @@ class RouteHandler:
             raise RoutesError("feature_id must be a non-empty string")
         project = self._lookup_project(project_id)
         path = self.feature_list_path_for(project)
-        # Bump to in_progress. feat-031's LLM dispatch will follow
-        # from this transition; the event we emit below is the
-        # signal feat-029 fans out to the browser.
         _safe_fail_call(lambda: _fl_mark_in_progress(path, feature_id))
         attempt_id = _new_attempt_id()
         await self.emit_event(
@@ -498,11 +597,60 @@ class RouteHandler:
             feature_id=feature_id,
             payload={"attempt_id": attempt_id},
         )
+        # feat-031: resolve implementation_model AFTER marking
+        # in_progress so a missing config name still shows the
+        # transition in feature_list.json (the user can see "yes the
+        # daemon accepted the start, then refused to run on the chosen
+        # model"). The LLMConfigError path below emits nothing
+        # additional and rolls the response back to a structured error.
+        # Reload the row to pick up the post-transition implementation_model
+        # value — the caller may have just edited it via /api/features.
+        post = _safe_fail_call(lambda: _fl_load(path))
+        feature_row = _find_feature(post, feature_id)
+        implementation_model = feature_row.get("implementation_model")
+        try:
+            config, source = self._resolve_and_register_llm(
+                feature_id=feature_id,
+                implementation_model=implementation_model,
+                attempt_id=attempt_id,
+            )
+        except LLMConfigError as exc:
+            # Best-effort cleanup of the attempt registry entry that
+            # was never populated (defensive: register is the last
+            # step, so the dict is untouched on this path).
+            self._drop_attempt_llm(attempt_id)
+            _logging.warn(
+                component="routes",
+                event="llm_config_error",
+                msg=f"start_feature refused: {exc}",
+                project_id=project_id,
+                feature_id=feature_id,
+                attempt_id=attempt_id,
+            )
+            # Raise so ``dispatch_envelope`` builds the structured
+            # ``ok: false`` envelope with code ``llm_config_error``.
+            # The ``feature_attempt_started`` event emitted above is
+            # already on the wire (WS frames are buffered per
+            # connection) so the browser can still render "attempt
+            # started, then refused by config check".
+            raise RoutesError(str(exc), code="llm_config_error") from exc
+        await self.emit_event(
+            "llm_resolved",
+            project_id=project_id,
+            feature_id=feature_id,
+            payload={
+                "attempt_id": attempt_id,
+                "config_name": config.name,
+                "source": source,
+            },
+        )
         return {
             "project_id": project_id,
             "feature_id": feature_id,
             "attempt_id": attempt_id,
             "status": "in_progress",
+            "config_name": config.name,
+            "config_source": source,
         }
 
     async def _stop_feature(self, extras: dict[str, Any]) -> dict[str, Any]:
@@ -534,13 +682,13 @@ class RouteHandler:
         }
 
     async def _retry_feature(self, extras: dict[str, Any]) -> dict[str, Any]:
-        """Wire-shape stub for feat-030.
+        """Wire-shape stub for feat-030, extended for feat-031.
 
-        Equivalent to ``feature_transition retry`` but emits a
-        ``feature_attempt_started`` event so the browser-side
-        progress UI can light up. feat-031 will swap the body for
-        the real LLM kick-off; for now this is the
-        protocol-contract proof.
+        Equivalent to ``feature_transition retry`` but emits
+        ``feature_attempt_started`` and ``llm_resolved`` so the
+        browser-side progress UI can light up. Reuses
+        ``_resolve_and_register_llm`` so the LLM-config error
+        contract matches ``_start_feature``.
         """
         project_id = extras.get("project_id")
         feature_id = extras.get("feature_id")
@@ -558,12 +706,65 @@ class RouteHandler:
             feature_id=feature_id,
             payload={"attempt_id": attempt_id},
         )
+        post = _safe_fail_call(lambda: _fl_load(path))
+        feature_row = _find_feature(post, feature_id)
+        implementation_model = feature_row.get("implementation_model")
+        try:
+            config, source = self._resolve_and_register_llm(
+                feature_id=feature_id,
+                implementation_model=implementation_model,
+                attempt_id=attempt_id,
+            )
+        except LLMConfigError as exc:
+            self._drop_attempt_llm(attempt_id)
+            _logging.warn(
+                component="routes",
+                event="llm_config_error",
+                msg=f"retry_feature refused: {exc}",
+                project_id=project_id,
+                feature_id=feature_id,
+                attempt_id=attempt_id,
+            )
+            raise RoutesError(str(exc), code="llm_config_error") from exc
+        await self.emit_event(
+            "llm_resolved",
+            project_id=project_id,
+            feature_id=feature_id,
+            payload={
+                "attempt_id": attempt_id,
+                "config_name": config.name,
+                "source": source,
+            },
+        )
         return {
             "project_id": project_id,
             "feature_id": feature_id,
             "attempt_id": attempt_id,
             "action": "retry",
             "status": "in_progress",
+            "config_name": config.name,
+            "config_source": source,
+        }
+
+    def _err_response_for_command(
+        self,
+        *,
+        project_id: str,
+        code: str,
+        message: str,
+    ) -> dict[str, Any]:
+        """Return a partial ``ok: false`` dict for in-handler error returns.
+
+        Reserved for future per-command error envelopes; current
+        feat-031 handlers raise ``RoutesError`` and let
+        ``dispatch_envelope`` build the structured envelope. Kept here
+        so a future per-handler enrichment (e.g. attaching the
+        attempt_id alongside the error code) has a single home.
+        """
+        return {
+            "project_id": project_id,
+            "ok": False,
+            "error": {"code": code, "message": message},
         }
 
     # ----- internal helpers -----
