@@ -333,7 +333,7 @@
         "Test: register a project, run a fake log write to its log file, remove the project, assert the log file is gone",
         "Test: remove a project with an in_progress feature; assert the feature is aborted and the log files are deleted"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "priority": "high",
       "depends_on": [
         "feat-012",
@@ -502,10 +502,18 @@
         "All tools: args_schema is a Pydantic model (or stdlib dataclass equivalent)",
         "Test: each tool has a unit test covering happy path and one error path (file not found, etc.)"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-020",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1393,9 +1401,9 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 14,
-    "failing": 40,
-    "in_progress": 0,
+    "passing": 15,
+    "failing": 39,
+    "in_progress": 1,
     "blocked": 0,
     "deferred": 0,
     "last_updated": "2026-09-12"
