@@ -474,14 +474,22 @@
         "On recursion_limit (D-052): raise a structured error with cause=recursion_limit",
         "Test: with HEDDLE_FAKE_LLM=1 and a fixture that has 2 tool calls then done; assert agent_runtime completes after 3 LLM invocations"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-018",
         "feat-020",
         "feat-021"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-019",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1409,8 +1417,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 16,
-    "failing": 38,
+    "passing": 17,
+    "failing": 37,
     "in_progress": 1,
     "blocked": 0,
     "deferred": 0,
