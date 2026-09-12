@@ -112,8 +112,8 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 SUMMARY
 -------
 Total features: 54
-Passing: 21
-Failing: 33
+Passing: 22
+Failing: 32
 In progress: 0
 Blocked: 0
 Deferred: 0
@@ -189,5 +189,17 @@ Last updated: 2026-09-12
 **Features now passing:** feat-014, feat-026 (21 / 54 total)
 
 **Notes:** feat-014: project_cascade + AgentRuntime.stop_event + Daemon._on_project_removed. 17 new tests (10+4+3). feat-026: Fastify skeleton in packages/node/ (diverge from feat-026 steps' packages/cli since that's Python). 8 new vitest tests pass. TypeBox provider deferred to feat-028 (needs fastify-type-provider-typebox). CI not wired for packages/node/ yet.
+
+---
+### SESSION 12 — 2026-09-12
+
+
+**Worked on:** feat-027 @ 28c68c4
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-027 (22/54) (22 / 54 total)
+
+**Notes:** feat-027: DaemonSupervisor (packages/node/src/supervisor.ts). Spawns python -m heddle_daemon, WS via ws@8.21.3 with retry loop, 5s ping/2s timeout/3 misses -> respawn. Three-mode fixture (clean-exit / WS-close / ignores-ping via _SilentConnection). pnpm typecheck clean; manual smoke shows supervisor_started -> daemon_spawned -> ws_connected. feat-029/030/050 unblocked. Out of scope: per-feature budget belongs to feat-047 (supervisor emits restart-budget-warning events for it).
 
 ---
