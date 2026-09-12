@@ -112,8 +112,8 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 SUMMARY
 -------
 Total features: 54
-Passing: 31
-Failing: 23
+Passing: 32
+Failing: 22
 In progress: 0
 Blocked: 0
 Deferred: 0
@@ -283,5 +283,17 @@ Last updated: 2026-09-13
 **Features now passing:** feat-015 (31 / 54 total)
 
 **Notes:** Python RotatingFileSink + Node.js hand-rolled sink + daemon/supervisor wiring. Env vars HEDDLE_LOG_MAX_BYTES/HEDDLE_LOG_BACKUP_COUNT shared across both runtimes. feat-025 unblocked.
+
+---
+### SESSION 20 — 2026-09-13
+
+
+**Worked on:** feat-036 @ e93562a7f51f892140ac61a2f2b5e7cfc5b125f8
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-036 (32 / 54 total)
+
+**Notes:** Bottom-lane rendering (D-056): Done/Someday/Archive collapsible lanes. kanban-store extended with KanbanLaneId + lanesExpanded (NOT persisted). KanbanLane view-only (no useDroppable). Lane headers always show counts; collapsed count badge has title attr with top 3 titles joined by newline. columnOf returns null for passing/deferred; laneOf maps to done/someday/archive. 22 new tests; 85 total green. handoff_check 10/10.
 
 ---
