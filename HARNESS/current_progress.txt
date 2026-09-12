@@ -112,12 +112,12 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 SUMMARY
 -------
 Total features: 54
-Passing: 26
-Failing: 28
+Passing: 28
+Failing: 26
 In progress: 0
 Blocked: 0
 Deferred: 0
-Last updated: 2026-09-12
+Last updated: 2026-09-13
 
 ### SESSION 6 — 2026-09-12
 
@@ -235,5 +235,17 @@ Last updated: 2026-09-12
 **Features now passing:** feat-032 (26 / 54 total)
 
 **Notes:** Web skeleton: Vite+React+Tailwind v4+TS strict. New packages/shared/ for envelope+domain types (ApiOk/Project/Feature/DraftCard/DialogResponse). Vite /api+/ws proxy to localhost:5174. Zustand activeProjectId + TanStack Query useProjects(). ProjectSwitcher real data-driven <select>. tsconfig adds noUncheckedIndexedAccess + exactOptionalPropertyTypes. Vitest jsdom; migrated logger.test.ts to Vitest globals. 15 web + 50 node tests pass. Unblocks feat-033/034/035/051.
+
+---
+### SESSION 16 — 2026-09-13
+
+
+**Worked on:** feat-033 @ 05bb58b
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-033 (28 / 54 total)
+
+**Notes:** Implemented packages/web/src/lib/ws-client.ts (state machine + exponential backoff + buffered send), singleton accessor, ConnectionStatus header pill, App.tsx mount/unmount lifecycle. 15 vitest cases cover state transitions, backoff math, buffer cap/age, factory failure, listener isolation. pnpm typecheck + test (30/30) + build all green.
 
 ---
