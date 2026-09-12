@@ -203,3 +203,13 @@ Last updated: 2026-09-12
 **Notes:** feat-027: DaemonSupervisor (packages/node/src/supervisor.ts). Spawns python -m heddle_daemon, WS via ws@8.21.3 with retry loop, 5s ping/2s timeout/3 misses -> respawn. Three-mode fixture (clean-exit / WS-close / ignores-ping via _SilentConnection). pnpm typecheck clean; manual smoke shows supervisor_started -> daemon_spawned -> ws_connected. feat-029/030/050 unblocked. Out of scope: per-feature budget belongs to feat-047 (supervisor emits restart-budget-warning events for it).
 
 ---
+
+### SESSION 13 — 2026-09-12
+
+**Worked on:** feat-028 — HTTP REST routes for projects/features/dialog
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-028 (23 / 54 total)
+
+**Notes:** feat-028: Three pieces shipped. (a) Daemon handlers in packages/daemon/heddle_daemon/routes.py — RouteHandler dataclass dispatching six business envelopes (project_list/add/remove, feature_list/transition, dialog_turn) into heddle_common. Wired via Daemon.enable_routes() + _handle_connection's new routes-first branch (skeleton echo fallback preserved for unhandled types). Project transitions route through the existing mark_in_progress / mark_blocked / mark_passing helpers; SystemExit-from-fail() is captured via temporary stderr redirect and re-raised as RoutesError with the right wire code. (b) Node.js supervisor.request<TData>(envelopeType, payload, {timeoutMs?}) — per-process reqSeq + req_id correlation, DaemonRequestTimeoutError on timeout (default 10s via HEDDLE_DAEMON_REQUEST_TIMEOUT_MS), DaemonUnavailableError when state != RUNNING, inbound-frame dispatcher parses ok:data vs ok:false envelopes. (c) Three Fastify route plugins in packages/node/src/routes/{projects,features,dialog}.ts — TypeBox schemas for body/params/response, daemon-code → HTTP-status mapping (invalid_input→400, not_found→404, conflict/invalid_state→409, daemon_unavailable→503, request_timeout→504, others→502). All mutations go through the daemon — no Node-side writer. 27/27 vitest pass (3 files: server.test.ts, routes.test.ts, supervisor-request.test.ts). 235/235 daemon pytest pass + 1 skipped (existing 216 + 19 new routes_smoke round-trip tests). handoff_check 10/10. feat-029/030/031/044 now unblocked.

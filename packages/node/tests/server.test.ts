@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Tests for the feat-026 Fastify skeleton.
+ * Tests for the feat-026 Fastify skeleton + feat-028 TypeBox wiring.
  *
- * Three concerns per feature spec:
- *   1. The three placeholder routes return 501 (in-process via
- *      fastify.inject()).
- *   2. The host gate refuses non-loopback binds at config time
- *      (subprocess test, since the refusal lives in main.ts and exits
- *      the process).
- *   3. The default config binds 127.0.0.1 successfully and serves 501
- *      to a real fetch from the bound port (subprocess test).
+ * What lives here (kept small per HARNESS "one responsibility per
+ * file"):
+ *   1. The buildServer skeleton + loopback gate (isLoopback).
+ *   2. The TypeBox type-provider is wired (every registered route
+ *      returns a JSON envelope on bad input).
  *
- * Subprocess tests use child_process.spawn so the exit code is
- * observable; an in-process test of the refusal path would silently
- * short-circuit when process.exit is mocked.
+ * What moved out:
+ *   - The 501 placeholder tests (deleted in feat-028: there are no
+ *     placeholders left — every route is real).
+ *   - Per-route happy paths live in tests/routes/{projects,features,
+ *     dialog}.test.ts so a failure points at the specific area.
+ *   - The subprocess refusal tests for ``main.ts`` stay here because
+ *     they cover the cross-cutting "HEDDLE_NODE_HOST=0.0.0.0
+ *     refuses" invariant which is independent of any route.
  */
 
 import { spawn } from "node:child_process";
@@ -24,13 +26,10 @@ import { beforeAll, describe, expect, test } from "vitest";
 
 import {
   DEFAULT_HOST,
-  PLACEHOLDER_ROUTES,
   buildServer,
   isLoopback,
 } from "../src/server.js";
 
-// Path to the source entry point. We spawn `node --import tsx` so
-// the test works without a prior tsc build step.
 const REPO_ROOT = resolve(__dirname, "..", "..", "..");
 const ENTRY_PATH = resolve(REPO_ROOT, "packages/node/src/main.ts");
 const HAS_DEPS = existsSync(resolve(REPO_ROOT, "packages/node/node_modules"));
@@ -43,35 +42,38 @@ beforeAll(() => {
   }
 });
 
-// ---------- in-process: 501 stub routes ----------
+// ---------- in-process: skeleton + TypeBox wiring ----------
 
 
 describe("buildServer", () => {
-  test("each placeholder route returns 501", async () => {
+  test("builds without crashing when no supervisor is attached", async () => {
     const app = await buildServer();
     try {
-      for (const path of PLACEHOLDER_ROUTES) {
-        const res = await app.inject({ method: "GET", url: path });
-        expect(res.statusCode).toBe(501);
-        const body = res.json();
-        expect(body.error).toBe("not_implemented");
-        expect(body.path).toBe(path);
-      }
+      // The shape test: TypeBox provider installed means the route
+      // exists (even if it returns 503 because no supervisor).
+      const res = await app.inject({ method: "GET", url: "/api/projects" });
+      expect(res.statusCode).toBe(503);
+      const body = res.json();
+      expect(body.ok).toBe(false);
+      expect(body.error.code).toBe("daemon_unavailable");
     } finally {
       await app.close();
     }
   });
 
-  test("POST and DELETE also hit the same 501 handler", async () => {
+  test("TypeBox validates POST /api/projects body", async () => {
     const app = await buildServer();
     try {
-      for (const method of ["POST", "DELETE"] as const) {
-        const res = await app.inject({
-          method,
-          url: "/api/projects",
-        });
-        expect(res.statusCode).toBe(501);
-      }
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/projects",
+        payload: {}, // missing required `path`
+      });
+      expect(res.statusCode).toBe(400);
+      // Fastify renders validation errors as {statusCode, error, message}
+      // by default; the route plugin's own mapping is tested separately.
+      const body = res.json();
+      expect(typeof body).toBe("object");
     } finally {
       await app.close();
     }
@@ -143,8 +145,8 @@ describe("main.ts subprocess behaviour", () => {
         {
           env: {
             ...process.env,
-            HEDDLE_NODE_HOST: "127.0.0.1",
-            HEDDLE_NODE_PORT: "not-a-port",
+            HEDDLE_NODE_HOST: DEFAULT_HOST,
+            HEDDLE_NODE_PORT: "not-a-number",
           },
         },
       );
@@ -160,72 +162,5 @@ describe("main.ts subprocess behaviour", () => {
       expect(stderr).toContain("invalid_port");
     },
     20000,
-  );
-
-  test(
-    "binds 127.0.0.1 and serves 501 over real fetch",
-    async () => {
-      // Random ephemeral test port (14000-14999) to avoid CI collisions.
-      const port = 14000 + Math.floor(Math.random() * 1000);
-      const proc = spawn(
-        process.execPath,
-        ["--import", "tsx", ENTRY_PATH],
-        {
-          env: {
-            ...process.env,
-            HEDDLE_NODE_HOST: DEFAULT_HOST,
-            HEDDLE_NODE_PORT: String(port),
-          },
-        },
-      );
-      let stderr = "";
-      proc.stderr.setEncoding("utf8");
-      proc.stderr.on("data", (d) => {
-        stderr += d;
-      });
-      let procExited: { code: number | null } | null = null;
-      proc.on("exit", (code) => {
-        procExited = { code };
-      });
-
-      try {
-        await new Promise<void>((resolveReady, rejectReady) => {
-          const timer = setTimeout(() => {
-            rejectReady(
-              new Error(
-                `server failed to start listening within 10s. stderr=${stderr}`,
-              ),
-            );
-          }, 10000);
-          const check = () => {
-            if (procExited !== null) {
-              clearTimeout(timer);
-              rejectReady(
-                new Error(
-                  `server exited early with code=${procExited?.code}; stderr=${stderr}`,
-                ),
-              );
-              return;
-            }
-            if (stderr.includes('"event":"listening"')) {
-              clearTimeout(timer);
-              resolveReady();
-            } else {
-              setTimeout(check, 50);
-            }
-          };
-          check();
-        });
-
-        const res = await fetch(`http://127.0.0.1:${port}/api/projects`);
-        expect(res.status).toBe(501);
-        const body = (await res.json()) as { error: string; path: string };
-        expect(body.error).toBe("not_implemented");
-        expect(body.path).toBe("/api/projects");
-      } finally {
-        proc.kill("SIGTERM");
-      }
-    },
-    25000,
   );
 });

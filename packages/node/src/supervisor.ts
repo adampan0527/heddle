@@ -29,6 +29,13 @@ import type { ChildProcess } from "node:child_process";
 import { delimiter, resolve } from "node:path";
 import { WebSocket as WSWebSocket } from "ws";
 
+import {
+  DaemonRequestTimeoutError,
+  DaemonUnavailableError,
+  resolveRequestTimeoutMs,
+  type DaemonRequestEnvelope,
+} from "./types.js";
+
 // ---------------------------------------------------------------------------
 // Constants (all `as const` — exported so tests can assert against them).
 // ---------------------------------------------------------------------------
@@ -188,6 +195,17 @@ export class DaemonSupervisor extends EventEmitter {
   private _spawnInFlight = false;
   private _stopRequested = false;
   private _pythonMissingWarned = false;
+  // feat-028: per-process request sequence for the request() wrapper.
+  // Combined with the pid to form a globally-unique req_id the daemon
+  // echoes back so we can match responses to outstanding promises.
+  private _reqSeq = 0;
+  private _pendingRequests: Map<
+    string,
+    {
+      resolve: (value: unknown) => void;
+      reject: (err: unknown) => void;
+    }
+  > = new Map();
 
   constructor(opts: SupervisorOptions = {}) {
     super();
@@ -232,6 +250,90 @@ export class DaemonSupervisor extends EventEmitter {
    */
   get socket(): WSWebSocket | null {
     return this._ws;
+  }
+
+  /**
+   * Request / response wrapper — feat-028 (HTTP REST routes).
+   *
+   * Sends a JSON envelope carrying a unique `req_id` and resolves with
+   * the matching response (matched by `req_id` in the inbound event).
+   * Used by `packages/node/src/routes/*.ts` to forward HTTP traffic
+   * to the daemon and translate the response back into HTTP status
+   * codes.
+   *
+   * Contract:
+   *   - Rejects immediately with `DaemonUnavailableError` if the
+   *     supervisor is not in `RUNNING` state (HTTP 503 at the route).
+   *   - Rejects with `DaemonRequestTimeoutError` if no response
+   *     arrives within `timeoutMs` (default 10s, configurable via
+   *     `HEDDLE_DAEMON_REQUEST_TIMEOUT_MS`).
+   *   - Resolves with the parsed `data` on `ok: true`.
+   *   - Throws an `Error` carrying `code`/`message` from the daemon
+   *     on `ok: false`, so route handlers can catch + map to HTTP
+   *     status codes (400 / 404 / 409 / etc.).
+   *
+   * feat-030 builds the full event-stream protocol on top of the
+   * same `req_id` field; this method is the minimal request/response
+   * primitive feat-028 needs and stays unchanged when feat-030 ships.
+   */
+  async request<TData = unknown>(
+    envelopeType: string,
+    payload: Record<string, unknown> = {},
+    options: { timeoutMs?: number } = {},
+  ): Promise<TData> {
+    if (this._state !== "RUNNING" || !this._ws) {
+      throw new DaemonUnavailableError(this._state);
+    }
+    const reqId = `${process.pid}-${++this._reqSeq}`;
+    const timeoutMs = options.timeoutMs ?? resolveRequestTimeoutMs();
+    const fullEnvelope: DaemonRequestEnvelope = {
+      v: 1,
+      type: envelopeType,
+      req_id: reqId,
+      ...payload,
+    };
+
+    return new Promise<TData>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this._pendingRequests.delete(reqId);
+        reject(
+          new DaemonRequestTimeoutError(envelopeType, reqId, timeoutMs),
+        );
+      }, timeoutMs);
+
+      this._pendingRequests.set(reqId, {
+        resolve: (value) => {
+          clearTimeout(timer);
+          // The daemon's `data` payload is JSON-shaped, but we don't
+          // validate it here — call sites narrow via `TData` generic.
+          // Cast through `unknown` so the generic boundary doesn't
+          // leak into the pending-requests Map's value type.
+          resolve(value as TData);
+        },
+        reject: (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      });
+
+      // Best-effort send. ``ws.send`` can throw synchronously if the
+      // socket has just transitioned to CLOSING — wrap and route the
+      // failure through the pending-request reject path so the caller
+      // sees a uniform "request rejected" error.
+      try {
+        this._ws!.send(JSON.stringify(fullEnvelope));
+      } catch (err) {
+        const entry = this._pendingRequests.get(reqId);
+        this._pendingRequests.delete(reqId);
+        clearTimeout(timer);
+        if (entry) {
+          entry.reject(
+            err instanceof Error ? err : new Error(String(err)),
+          );
+        }
+        return;
+      }
+    });
   }
 
   /**
@@ -398,6 +500,79 @@ export class DaemonSupervisor extends EventEmitter {
       }
       this._ws = null;
     }
+    // feat-028: a WS drop aborts every outstanding request() so
+    // routes can return 503 to the browser instead of hanging until
+    // each request's individual timeout fires. The route maps
+    // DaemonUnavailableError to HTTP 503; surfacing the supervisor's
+    // ``state`` field gives the caller a clear "daemon went away"
+    // signal even if the WS itself was healthy before close.
+    this._rejectAllPendingRequests(
+      this._state === "STOPPED" ? "stopped" : "ws_disconnect",
+    );
+  }
+
+  /**
+   * feat-028: parse an inbound WS frame and dispatch any
+   * request/response correlation we find. Malformed JSON or messages
+   * without a `req_id` are ignored — those will be the domain of
+   * feat-030's event-stream consumer, not the request/response
+   * wrapper.
+   */
+  private _handleInboundMessage(data: unknown): void {
+    let parsed: unknown;
+    try {
+      const text =
+        typeof data === "string"
+          ? data
+          : Buffer.isBuffer(data)
+            ? data.toString("utf-8")
+            : Array.isArray(data)
+              ? Buffer.concat(data).toString("utf-8")
+              : String(data);
+      parsed = JSON.parse(text);
+    } catch {
+      // Malformed JSON — ignore. feat-030 will log at warn; feat-028
+      // does not own a wire-level error stream so silent ignore is
+      // the least-bad default.
+      return;
+    }
+    if (!parsed || typeof parsed !== "object") return;
+    const obj = parsed as Record<string, unknown>;
+    const reqId = obj["req_id"];
+    if (typeof reqId !== "string") return;
+    const entry = this._pendingRequests.get(reqId);
+    if (!entry) return;
+    this._pendingRequests.delete(reqId);
+    if (obj["ok"] === true) {
+      entry.resolve(obj["data"]);
+      return;
+    }
+    const err = obj["error"];
+    if (
+      err &&
+      typeof err === "object" &&
+      "code" in err &&
+      "message" in err
+    ) {
+      const daemonErr = err as { code: string; message: string };
+      const ex = new Error(daemonErr.message);
+      // Stash the code on the error so route handlers can switch on
+      // it without re-parsing the message. Routes import the
+      // `ErrorCode` type from types.ts and cast this back.
+      (ex as unknown as { code: string }).code = daemonErr.code;
+      entry.reject(ex);
+      return;
+    }
+    entry.reject(new Error("daemon response missing ok/error envelope"));
+  }
+
+  private _rejectAllPendingRequests(reason: string): void {
+    if (this._pendingRequests.size === 0) return;
+    const err = new DaemonUnavailableError(reason);
+    for (const [, entry] of this._pendingRequests) {
+      entry.reject(err);
+    }
+    this._pendingRequests.clear();
   }
 
   private _stopPingLoop(): void {
@@ -555,6 +730,15 @@ export class DaemonSupervisor extends EventEmitter {
 
       ws.on("pong", () => {
         this._onWsPong();
+      });
+
+      // feat-028: match inbound response envelopes to outstanding
+      // request() promises by req_id. Anything we don't recognise
+      // (e.g. supervisor-event-stream messages from feat-030) is
+      // ignored here — those handlers will attach via the
+      // ``message`` event themselves.
+      ws.on("message", (data) => {
+        this._handleInboundMessage(data);
       });
     });
   }

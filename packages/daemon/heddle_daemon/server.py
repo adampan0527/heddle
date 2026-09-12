@@ -388,6 +388,14 @@ class Daemon:
         # when it sees the signal. v0.1 is single-project so all
         # entries in this dict share the same project scope.
         self._feature_stop_events: dict[str, asyncio.Event] = {}
+        # feat-028: business-handler registry. The RouteHandler class
+        # is imported lazily (only when first accessed) so the daemon
+        # skeleton's 18 existing tests — which construct Daemon()
+        # without ever calling into routes — pay no import cost. Wired
+        # into ``_handle_connection`` only when ``enable_routes()`` is
+        # called; the daemon's ``__main__`` does that before ``start()``.
+        self._routes_enabled: bool = False
+        self._routes: Optional[Any] = None  # type: ignore[assignment]
 
     @property
     def config(self) -> DaemonConfig:
@@ -430,6 +438,39 @@ class Daemon:
                 "register before start() or restart the daemon."
             )
         self._handler = handler
+
+    def enable_routes(self) -> "RouteHandler":
+        """feat-028: switch the WS message loop to the business-handler
+        registry (``heddle_daemon.routes.RouteHandler``).
+
+        After this returns, every well-formed inbound envelope is first
+        offered to ``self._routes.dispatch_envelope``. If the handler
+        returns a response envelope it is sent back and the per-message
+        loop iterates; if it returns ``None`` (envelope type unhandled)
+        the loop falls back to ``self._handler`` — which defaults to
+        ``_echo_handler`` so any pre-existing test path continues to
+        work byte-for-byte.
+
+        Idempotent: a second call returns the existing ``RouteHandler``
+        without re-creating it, so a mis- ordered call from
+        ``__main__`` is harmless.
+
+        Must be called before ``start()``; the underlying
+        ``register_message_handler`` guards against later swaps, and
+        this method enforces the same invariant by raising if the
+        server is already listening.
+        """
+        if self._server is not None:
+            raise RuntimeError(
+                "cannot enable_routes() after daemon.start(); "
+                "call before start() or restart the daemon."
+            )
+        if self._routes is None:
+            from .routes import RouteHandler
+
+            self._routes = RouteHandler(on_remove=self._on_project_removed)
+        self._routes_enabled = True
+        return self._routes
 
     async def start(self) -> None:
         """Bind the socket. Raises `OSError` on port conflict.
@@ -636,7 +677,39 @@ class Daemon:
                     )
                     continue
                 try:
-                    await self._handler(conn, env)
+                    # feat-028: when ``enable_routes()`` was called,
+                    # the business-handler registry gets first dibs on
+                    # every envelope. If it returns a response we send
+                    # it and move on; if it returns None (unhandled
+                    # type) we fall through to ``self._handler`` so
+                    # the skeleton's echo behaviour still works for
+                    # legacy / test consumers.
+                    handled = False
+                    if self._routes_enabled and self._routes is not None:
+                        try:
+                            resp = await self._routes.dispatch_envelope(env)
+                        except Exception as exc:
+                            _logging.error(
+                                component="daemon",
+                                event="routes_handler_raised",
+                                msg=f"routes dispatch raised: {exc}",
+                                envelope_type=env.type,
+                                peer=peer,
+                            )
+                            err = build_envelope(
+                                "error",
+                                code="handler_error",
+                                message=str(exc),
+                                envelope_type=env.type,
+                            )
+                            await conn.send(err.to_json())
+                            handled = True
+                        else:
+                            if resp is not None:
+                                await conn.send(resp.to_json())
+                                handled = True
+                    if not handled:
+                        await self._handler(conn, env)
                 except Exception as exc:
                     _logging.error(
                         component="daemon",
@@ -744,6 +817,12 @@ def run_daemon(argv: list[str] | None = None) -> int:
         return 1
 
     daemon = Daemon(cfg)
+    # feat-028: turn on the business-handler registry so the
+    # supervisor's project_list / project_add / project_remove /
+    # feature_list / feature_transition / dialog_turn envelopes are
+    # dispatched into heddle_common instead of being echoed. Must be
+    # called before start() per enable_routes()'s invariant.
+    daemon.enable_routes()
 
     async def _main() -> int:
         try:

@@ -760,13 +760,21 @@
         "All routes validate input via TypeBox schemas; invalid input returns 400 with validation errors",
         "Test: each route has a Vitest test covering happy path and one validation failure"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-026",
         "feat-012"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-028",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1457,8 +1465,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 22,
-    "failing": 32,
+    "passing": 23,
+    "failing": 31,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,
