@@ -112,8 +112,8 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 SUMMARY
 -------
 Total features: 54
-Passing: 28
-Failing: 26
+Passing: 29
+Failing: 25
 In progress: 0
 Blocked: 0
 Deferred: 0
@@ -247,5 +247,17 @@ Last updated: 2026-09-13
 **Features now passing:** feat-033 (28 / 54 total)
 
 **Notes:** Implemented packages/web/src/lib/ws-client.ts (state machine + exponential backoff + buffered send), singleton accessor, ConnectionStatus header pill, App.tsx mount/unmount lifecycle. 15 vitest cases cover state transitions, backoff math, buffer cap/age, factory failure, listener isolation. pnpm typecheck + test (30/30) + build all green.
+
+---
+### SESSION 17 — 2026-09-13
+
+
+**Worked on:** feat-034 @ a5c5c6f
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-034 (29 / 54 total)
+
+**Notes:** feat-034: ProjectSwitcher polished (chevron+menu, last_accessed_at desc sort, ESC-to-close, Retry on error); PickProjectFolderButton with native picker probe + typed-path fallback; ui-store wrapped in zustand persist (localStorage heddle.ui.activeProjectId, partialize). 41 web + 50 node + 181 common + 255 daemon tests green; handoff_check 10/10. Risk R6: daemon does not bump last_accessed_at on feature ops — future feat-029/030 may wire projects_io.touch_project.
 
 ---
