@@ -371,7 +371,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 19,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-015",
@@ -1010,7 +1010,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 19,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-035",
@@ -1035,12 +1035,20 @@
         "Lane interactions are view-only: no drag in or out of lanes; no inline edit; modifications go through dialog commands",
         "Test: render a project with 5 passing + 3 deferred + 2 superseded features; assert lane counts and default expansion states"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-035"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": 20,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-036",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1534,8 +1542,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 31,
-    "failing": 23,
+    "passing": 32,
+    "failing": 22,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

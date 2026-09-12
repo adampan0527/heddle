@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Top-level kanban board — feat-035.
+ * Top-level kanban board — feat-035 / feat-036.
  *
  * Layout: a 3-column responsive grid (`grid-cols-1 md:grid-cols-3`)
  * holding one `<KanbanColumn />` per `KanbanColumnId`. Each column
  * lists the features whose `status` matches its id.
+ *
+ * Below the main grid (still inside the same `DndContext`) is a row
+ * of three collapsible lanes — Done (passing), Someday (deferred),
+ * Archive (`superseded_by != null`). Lanes are view-only: no
+ * `useDroppable`, no inline edit, no drag target. See `KanbanLaneRow`.
  *
  * Drag rules (enforced here in `onDragEnd`):
  *
@@ -19,6 +24,12 @@
  *   4. Allowed drops: trigger `useStartFeature` for the in_progress
  *      column; otherwise no-op (no API exists for "ready ↔ blocked"
  *      transitions in v0.1).
+ *   5. Drops onto lane ids are no-ops. Lanes do not register a
+ *      droppable target, so `over` is only set when the cursor is
+ *      actually over a column. As defense-in-depth, `decideDrop`
+ *      casts `overId` as `KanbanColumnId`; if a lane id ever leaks
+ *      through (e.g. via a future change), the cast + the column-only
+ *      match would still cause `decideDrop` to return noop.
  *
  * The data flow is deliberately unidirectional:
  *
@@ -47,10 +58,12 @@ import {
 import {
   useKanbanStore,
   type KanbanColumnId,
+  type KanbanLaneId,
 } from "../lib/state/kanban-store.ts";
 import { toastError } from "../lib/toast.ts";
 import { KanbanCard } from "./KanbanCard.tsx";
 import { KanbanColumn } from "./KanbanColumn.tsx";
+import { KanbanLaneRow } from "./KanbanLaneRow.tsx";
 
 interface KanbanProps {
   projectId: string | null;
@@ -67,17 +80,43 @@ const COLUMNS: ReadonlyArray<{
 ];
 
 /**
- * Map a feature row to its column. `pending` and `deferred` both
- * surface in Ready; `passing` is hidden from the main view (it shows
- * up in the bottom-lane rendering that feat-036 will add).
+ * Map a feature row to its main-column id. Returns `null` for
+ * statuses that live in a bottom lane (`passing`, `deferred`,
+ * or any feature with `superseded_by != null`); the main grid skips
+ * these and `KanbanLaneRow` picks them up via `laneOf`.
+ *
+ * `pending` still surfaces in Ready so the user sees work that has
+ * never been attempted.
  */
-export function columnOf(feature: Feature): KanbanColumnId {
+export function columnOf(feature: Feature): KanbanColumnId | null {
   const s: string = feature.status;
   if (s === "in_progress") return "in_progress";
   if (s === "blocked") return "blocked";
-  // pending / deferred / passing all surface in Ready for v0.1;
-  // feat-036 will lift `passing` into a bottom lane.
-  return "ready";
+  if (s === "pending") return "ready";
+  // passing / deferred → bottom lanes (feat-036)
+  return null;
+}
+
+/**
+ * Map a feature row to its bottom-lane id, or `null` if it does not
+ * belong in any lane (it belongs in a main column instead — see
+ * `columnOf`). Mirrors `columnOf`'s shape so both mappers stay
+ * symmetric and easy to read side-by-side.
+ *
+ *   passing               → done
+ *   deferred              → someday
+ *   superseded_by != null → archive
+ *   anything else         → null
+ *
+ * `superseded_by` is checked before status; a feature that is both
+ * `passing` and superseded is considered archived.
+ */
+export function laneOf(feature: Feature): KanbanLaneId | null {
+  if (feature.superseded_by != null) return "archive";
+  const s: string = feature.status;
+  if (s === "passing") return "done";
+  if (s === "deferred") return "someday";
+  return null;
 }
 
 /**
@@ -195,7 +234,12 @@ export function Kanban({ projectId }: KanbanProps): React.ReactElement {
     COLUMNS.map((c) => [c.id, [] as Feature[]]),
   );
   for (const f of list) {
-    byColumn.get(columnOf(f))?.push(f);
+    // `columnOf` may return `null` for features that live in a bottom
+    // lane (feat-036). Those are routed to <KanbanLaneRow /> below
+    // via `laneOf`, so we silently skip them here.
+    const cid = columnOf(f);
+    if (cid === null) continue;
+    byColumn.get(cid)?.push(f);
   }
 
   return (
@@ -231,6 +275,7 @@ export function Kanban({ projectId }: KanbanProps): React.ReactElement {
           );
         })}
       </div>
+      <KanbanLaneRow features={list} />
     </DndContext>
   );
 }

@@ -28,7 +28,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import type { Feature } from "@heddle/shared";
 
-import { Kanban, columnOf, decideDrop } from "./Kanban.tsx";
+import { Kanban, columnOf, decideDrop, laneOf } from "./Kanban.tsx";
 
 vi.mock("../lib/api/features.js", () => ({
   useFeatures: vi.fn(),
@@ -111,12 +111,58 @@ describe("decideDrop", () => {
 // ---------- columnOf ----------
 
 describe("columnOf", () => {
-  test("buckets statuses into the right column", () => {
+  test("buckets main-column statuses; passing/deferred go to lanes", () => {
     expect(columnOf(makeFeature({ status: "in_progress" }))).toBe("in_progress");
     expect(columnOf(makeFeature({ status: "blocked" }))).toBe("blocked");
     expect(columnOf(makeFeature({ status: "pending" }))).toBe("ready");
-    expect(columnOf(makeFeature({ status: "deferred" }))).toBe("ready");
-    expect(columnOf(makeFeature({ status: "passing" }))).toBe("ready");
+    // feat-036: passing and deferred now go to bottom lanes,
+    // not the Ready column.
+    expect(columnOf(makeFeature({ status: "passing" }))).toBeNull();
+    expect(columnOf(makeFeature({ status: "deferred" }))).toBeNull();
+  });
+});
+
+// ---------- laneOf ----------
+
+describe("laneOf", () => {
+  test("passing -> done", () => {
+    expect(laneOf(makeFeature({ status: "passing" }))).toBe("done");
+  });
+
+  test("deferred -> someday", () => {
+    expect(laneOf(makeFeature({ status: "deferred" }))).toBe("someday");
+  });
+
+  test("superseded_by != null -> archive (regardless of status)", () => {
+    expect(
+      laneOf(
+        makeFeature({
+          status: "pending",
+          superseded_by: "feat-999",
+        }),
+      ),
+    ).toBe("archive");
+    // A passing + superseded feature also goes to Archive.
+    expect(
+      laneOf(
+        makeFeature({
+          status: "passing",
+          superseded_by: "feat-999",
+        }),
+      ),
+    ).toBe("archive");
+  });
+
+  test("pending / in_progress / blocked -> null (belong in a column)", () => {
+    expect(laneOf(makeFeature({ status: "pending" }))).toBeNull();
+    expect(laneOf(makeFeature({ status: "in_progress" }))).toBeNull();
+    expect(laneOf(makeFeature({ status: "blocked" }))).toBeNull();
+  });
+
+  test("superseded_by === null + not passing/deferred -> null", () => {
+    expect(
+      laneOf(makeFeature({ status: "pending", superseded_by: null })),
+    ).toBeNull();
   });
 });
 
@@ -206,5 +252,57 @@ describe("<Kanban /> render", () => {
     renderWithClient(<Kanban projectId="proj-1" />);
     // in_progress and blocked are empty for this fixture
     expect(screen.getAllByText(/no features/i).length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("passing features show ONLY in the Done lane, not the Ready column", () => {
+    setupApiMock([
+      makeFeature({ id: "feat-PASS", status: "passing" }),
+      makeFeature({ id: "feat-PEND", status: "pending" }),
+    ]);
+    renderWithClient(<Kanban projectId="proj-1" />);
+    // feat-PASS is rendered (it lives in the Done lane).
+    expect(screen.getByText("feat-PASS")).toBeInTheDocument();
+    // The Done lane is expanded by default and contains the card.
+    const doneLane = screen.getByLabelText(/done lane/i);
+    expect(doneLane).toBeInTheDocument();
+    expect(doneLane).toHaveTextContent("feat-PASS");
+    // The Ready column should NOT contain feat-PASS — only feat-PEND.
+    const readyColumn = screen.getByLabelText(/ready column/i);
+    expect(readyColumn).toHaveTextContent("feat-PEND");
+    expect(readyColumn).not.toHaveTextContent("feat-PASS");
+  });
+
+  test("deferred features show ONLY in the Someday lane, not the Ready column", () => {
+    setupApiMock([
+      makeFeature({ id: "feat-DEF", status: "deferred" }),
+      makeFeature({ id: "feat-PEND", status: "pending" }),
+    ]);
+    renderWithClient(<Kanban projectId="proj-1" />);
+    // Someday is collapsed by default; the lane header still renders.
+    const somedayLane = screen.getByLabelText(/someday lane/i);
+    expect(somedayLane).toBeInTheDocument();
+    // The Done lane body exists with the "No features" placeholder;
+    // the Someday lane body is null (truly unmounted, since collapsed).
+    expect(somedayLane.querySelector("[data-lane-body]")).toBeNull();
+    // Ready column should NOT contain feat-DEF.
+    const readyColumn = screen.getByLabelText(/ready column/i);
+    expect(readyColumn).not.toHaveTextContent("feat-DEF");
+  });
+
+  test("all three bottom lanes are rendered, even when empty", () => {
+    setupApiMock([makeFeature({ id: "feat-A", status: "pending" })]);
+    renderWithClient(<Kanban projectId="proj-1" />);
+    expect(screen.getByLabelText(/done lane/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/someday lane/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/archive lane/i)).toBeInTheDocument();
+  });
+
+  test("lane row carries data-lane-droppable=false (no useDroppable anywhere)", () => {
+    setupApiMock([makeFeature({ id: "feat-A", status: "passing" })]);
+    renderWithClient(<Kanban projectId="proj-1" />);
+    const laneRow = screen.getByLabelText(/bottom lanes/i);
+    expect(laneRow).toHaveAttribute("data-lane-droppable", "false");
+    // No element should carry a droppable-lane id attribute.
+    expect(document.querySelector("[data-lane-id$='-droppable']")).toBeNull();
   });
 });
