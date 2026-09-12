@@ -883,12 +883,20 @@
         "App.tsx renders a single <App /> with a project switcher and a placeholder for the kanban + dialog",
         "Run `pnpm --filter web dev`; assert browser loads at http://localhost:5173"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-003"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-032",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1481,8 +1489,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 25,
-    "failing": 29,
+    "passing": 26,
+    "failing": 28,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

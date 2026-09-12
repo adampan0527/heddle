@@ -1,0 +1,22 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Tailwind v4 entry stylesheet.
+ *
+ * CSS-first config (no tailwind.config.js). Brand design tokens will
+ * land here in feat-034+; for feat-032 we ship a single token to
+ * prove the pipeline.
+ */
+
+@import "tailwindcss";
+
+@theme {
+  --color-heddle-bg: #0b0d10;
+}
+
+body {
+  background-color: var(--color-heddle-bg);
+  color: #e8eaed;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  margin: 0;
+}

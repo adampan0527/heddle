@@ -19,6 +19,8 @@
 import type { FastifyPluginAsync } from "fastify";
 import { Type } from "@sinclair/typebox";
 
+import type { Feature } from "@heddle/shared";
+
 import type { DaemonSupervisor } from "../supervisor.js";
 import {
   forwardOrFail,
@@ -101,11 +103,11 @@ export const registerFeatureRoutes: FastifyPluginAsync<
       },
     },
     async (req: any, reply: any): Promise<
-      ApiOk<{ project_id: string; features: unknown[] }> | ApiErr
+      ApiOk<{ project_id: string; features: Feature[] }> | ApiErr
     > => {
       const out = await forwardOrFail<{
         project_id: string;
-        features: unknown[];
+        features: Feature[];
       }>(supervisor, "feature_list", { project_id: req.params.id }, reply);
       if (!out.ok) {
         reply.code(out.httpStatus);
@@ -130,7 +132,7 @@ export const registerFeatureRoutes: FastifyPluginAsync<
           project_id: string;
           feature_id: string;
           action: string;
-          feature: unknown;
+          feature: Feature;
         }>
       | ApiErr
     > => {
@@ -138,7 +140,7 @@ export const registerFeatureRoutes: FastifyPluginAsync<
         project_id: string;
         feature_id: string;
         action: string;
-        feature: unknown;
+        feature: Feature;
       }>(
         supervisor,
         "feature_transition",

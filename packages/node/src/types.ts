@@ -20,21 +20,19 @@
  * the raw daemon shape.
  */
 
+import type {
+  DaemonError,
+} from "@heddle/shared";
+
 /** All wire codes the daemon (or HTTP layer) can return. */
-export const ERROR_CODES = [
-  "invalid_input",
-  "not_found",
-  "conflict",
-  "invalid_state",
-  "schema_too_new",
-  "envelope_malformed",
-  "envelope_version_too_new",
-  "handler_error",
-  "internal_error",
-  "daemon_unavailable",
-  "request_timeout",
-] as const;
-export type ErrorCode = (typeof ERROR_CODES)[number];
+export {
+  ERROR_CODES,
+  type ErrorCode,
+  type DaemonError,
+  type ApiOk,
+  type ApiErr,
+  type ApiResponse,
+} from "@heddle/shared";
 
 /** Per-call timeout. feat-044's LLM calls will override per envelope. */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
@@ -106,10 +104,7 @@ export class DaemonUnavailableError extends Error {
 }
 
 /** The structured error returned by the daemon on `ok: false`. */
-export interface DaemonError {
-  code: ErrorCode;
-  message: string;
-}
+// Imported from @heddle/shared at the top of this file.
 
 export interface DaemonRequestEnvelope {
   v: 1;
@@ -194,18 +189,5 @@ export interface DaemonEventEnvelope {
   payload: Record<string, unknown>;
 }
 
-// ----- HTTP-level envelopes (routes' shape, browser-facing) -----
-
-/** Successful HTTP response. Browser does `if (resp.ok) ...`. */
-export interface ApiOk<T> {
-  ok: true;
-  data: T;
-}
-
-/** Failed HTTP response. `code` is one of ERROR_CODES. */
-export interface ApiErr {
-  ok: false;
-  error: DaemonError;
-}
-
-export type ApiResponse<T> = ApiOk<T> | ApiErr;
+// HTTP-level envelopes (ApiOk/ApiErr/ApiResponse) live in
+// @heddle/shared and are re-exported from the top of this file.

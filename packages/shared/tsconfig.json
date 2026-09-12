@@ -13,14 +13,8 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
-    "outDir": "./dist",
-    "sourceMap": true,
-    "declaration": false,
-    "baseUrl": ".",
-    "paths": {
-      "@heddle/shared": ["../shared/src/index.ts"]
-    }
+    "noEmit": true,
+    "declaration": false
   },
-  "include": ["src/**/*", "../shared/src/**/*"],
-  "exclude": ["tests", "dist", "node_modules"]
+  "include": ["src/**/*"]
 }

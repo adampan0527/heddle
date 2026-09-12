@@ -15,6 +15,8 @@
 import type { FastifyPluginAsync } from "fastify";
 import { Type } from "@sinclair/typebox";
 
+import type { DialogResponse } from "@heddle/shared";
+
 import type { DaemonSupervisor } from "../supervisor.js";
 import { forwardOrFail } from "./projects.js";
 import type { ApiErr, ApiOk } from "../types.js";
@@ -75,20 +77,9 @@ export const registerDialogRoutes: FastifyPluginAsync<
       },
     },
     async (req: any, reply: any): Promise<
-      | ApiOk<{
-          project_id: string;
-          kind: "chat" | "work";
-          text: string;
-          drafts?: unknown[];
-        }>
-      | ApiErr
+      ApiOk<DialogResponse> | ApiErr
     > => {
-      const out = await forwardOrFail<{
-        project_id: string;
-        kind: "chat" | "work";
-        text: string;
-        drafts?: unknown[];
-      }>(
+      const out = await forwardOrFail<DialogResponse>(
         supervisor,
         "dialog_turn",
         { project_id: req.params.id, message: req.body.message },

@@ -32,6 +32,8 @@ import type { FastifyInstance } from "fastify";
 import type { FastifyPluginAsync } from "fastify";
 import { Type } from "@sinclair/typebox";
 
+import type { Project } from "@heddle/shared";
+
 import type { DaemonSupervisor } from "../supervisor.js";
 import {
   DaemonRequestTimeoutError,
@@ -97,8 +99,8 @@ export const registerProjectRoutes: FastifyPluginAsync<
   typed.get(
     "/api/projects",
     { schema: { response: { 200: ProjectListResponseSchema } } },
-    async (_req: any, reply: any): Promise<ApiOk<{ projects: unknown[] }> | ApiErr> => {
-      const out = await forwardOrFail<{ projects: unknown[] }>(
+    async (_req: any, reply: any): Promise<ApiOk<{ projects: Project[] }> | ApiErr> => {
+      const out = await forwardOrFail<{ projects: Project[] }>(
         supervisor,
         "project_list",
         {},
@@ -121,8 +123,8 @@ export const registerProjectRoutes: FastifyPluginAsync<
         response: { 201: ProjectResponseSchema },
       },
     },
-    async (req: any, reply: any): Promise<ApiOk<{ project: unknown }> | ApiErr> => {
-      const out = await forwardOrFail<{ project: unknown }>(
+    async (req: any, reply: any): Promise<ApiOk<{ project: Project }> | ApiErr> => {
+      const out = await forwardOrFail<{ project: Project }>(
         supervisor,
         "project_add",
         { path: req.body.path, name: req.body.name ?? null },
@@ -146,8 +148,8 @@ export const registerProjectRoutes: FastifyPluginAsync<
         response: { 200: ProjectResponseSchema },
       },
     },
-    async (req: any, reply: any): Promise<ApiOk<{ project: unknown }> | ApiErr> => {
-      const out = await forwardOrFail<{ project: unknown }>(
+    async (req: any, reply: any): Promise<ApiOk<{ project: Project }> | ApiErr> => {
+      const out = await forwardOrFail<{ project: Project }>(
         supervisor,
         "project_remove",
         { project_id: req.params.id },
