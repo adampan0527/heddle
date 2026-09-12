@@ -862,14 +862,22 @@
         "Step 8: Validation: handoff_check, ruff check, ruff format --check, pnpm --filter node typecheck, pytest packages/common/heddle_common/tests + packages/daemon/tests -v",
         "Step 9: Mark feat-031 passing via feature_list.py mark-passing only after Steps 1-8 green end-to-end"
       ],
-      "status": "in_progress",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-011",
         "feat-023",
         "feat-030"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-031",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1494,9 +1502,9 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 26,
-    "failing": 28,
-    "in_progress": 1,
+    "passing": 27,
+    "failing": 27,
+    "in_progress": 0,
     "blocked": 0,
     "deferred": 0,
     "last_updated": "2026-09-13"
