@@ -32,6 +32,7 @@ import {
 
 import { logger } from "./lib/logger.js";
 import type { DaemonSupervisor } from "./supervisor.js";
+import type { BrowserWsBridge } from "./browser-ws.js";
 
 export const DEFAULT_HOST = "127.0.0.1";
 
@@ -46,6 +47,13 @@ export function isLoopback(host: string): boolean {
 
 export interface BuildServerOptions {
   supervisor?: DaemonSupervisor | undefined;
+  /**
+   * feat-029: browser WebSocket bridge. Optional so existing tests
+   * (which only exercise the HTTP routes) keep passing without
+   * constructing one. When omitted, the `/ws` route is NOT
+   * registered — the bridge is a hard dependency for the browser.
+   */
+  bridge?: BrowserWsBridge | undefined;
 }
 
 /**
@@ -101,6 +109,18 @@ export async function buildServer(
     registerDialogRoutes as any,
     { supervisor: options.supervisor },
   );
+
+  // feat-029: browser WebSocket bridge. Only register when the
+  // caller supplies it (production wiring in main.ts always does;
+  // unit tests that don't exercise /ws may pass `bridge: undefined`).
+  if (options.bridge) {
+    const { registerBrowserWs } = await import("./routes/ws.js");
+    await app.register(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      registerBrowserWs as any,
+      { bridge: options.bridge },
+    );
+  }
 
   app.addHook("onResponse", async (req: any, reply: any) => {
     logger.info(

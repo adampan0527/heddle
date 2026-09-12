@@ -768,7 +768,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 14,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-028",
@@ -793,13 +793,21 @@
         "Test: simulate a feature status change; assert all connected clients receive the event within 100ms",
         "Test: two clients connected, two projects; event for project A only reaches the client viewing project A"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-027",
         "feat-030"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-029",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -826,7 +834,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 14,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-030",
@@ -1473,8 +1481,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 24,
-    "failing": 30,
+    "passing": 25,
+    "failing": 29,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

@@ -23,6 +23,7 @@
 
 import { buildServer, isLoopback, DEFAULT_HOST, DEFAULT_PORT } from "./server.js";
 import { DaemonSupervisor } from "./supervisor.js";
+import { BrowserWsBridge } from "./browser-ws.js";
 import { logger } from "./lib/logger.js";
 import type { DaemonEventRecord } from "./protocol.js";
 import { assertNeverDaemonEvent } from "./protocol.js";
@@ -51,8 +52,13 @@ if (!Number.isFinite(port) || port <= 0 || port > 65535) {
   process.exit(1);
 }
 
-const app = await buildServer();
+// feat-029: bridge between the daemon event stream and browser WS
+// clients. Constructed AFTER the supervisor (we subscribe to its
+// "daemon-event" EventEmitter) and BEFORE supervisor.start() so
+// the subscription is attached before any daemon events can arrive.
 const supervisor = new DaemonSupervisor();
+const bridge = new BrowserWsBridge(supervisor);
+const app = await buildServer({ supervisor, bridge });
 
 // Wire supervisor events into the structured logger. feat-030 will also
 // subscribe to `ws-handshake` to attach the daemon message protocol.

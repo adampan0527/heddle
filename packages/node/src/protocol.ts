@@ -142,3 +142,121 @@ export interface DaemonEventRecord {
   /** Wall-clock arrival time on the Node.js side (ms since epoch). */
   received_at: number;
 }
+
+// ---------------------------------------------------------------------------
+// Browser-side command envelopes — feat-029 (Browser↔Node.js WS event stream).
+//
+// The browser sends these envelopes on the `/ws` connection. The
+// `BrowserWsBridge` forwards `dialog_turn` to the daemon via
+// `supervisor.request()` (awaited) and the other three via
+// `supervisor.sendCommand()` (fire-and-forget; matching response
+// envelope, if any, is routed back via req_id). All envelopes carry a
+// `project_id` so the bridge can record which project the browser
+// session is scoped to and use that as the fan-out filter for inbound
+// daemon events.
+//
+// Per-command payloads:
+//   dialog_turn    — {message: string}         (Chat/work — feat-044 will branch on this)
+//   start_feature  — {feature_id: string}      (Drag-to-start execution model)
+//   stop_feature   — {feature_id: string}      (User-initiated abort)
+//   retry_feature  — {feature_id, hint?: string} (D-033: retry-with-hint optional)
+//
+// Wire shape (browser → server, mirror of types.ts:DaemonCommandEnvelope):
+//
+//     {v: 1, type: "<command>", project_id: "<id>", ...payload}
+//
+// We do NOT require the browser to send `req_id` — `BrowserWsBridge`
+// allocates one when forwarding to the daemon and threads the reply
+// back to the right client via an internal pending-request map keyed
+// by the daemon-allocated `req_id`. This keeps the browser's API
+// surface narrow (no per-call id bookkeeping) while preserving the
+// request/response semantics of feat-028 on the daemon side.
+// ---------------------------------------------------------------------------
+
+export const BROWSER_COMMAND_TYPES = [
+  "dialog_turn",
+  "start_feature",
+  "stop_feature",
+  "retry_feature",
+] as const;
+export type BrowserCommandType = (typeof BROWSER_COMMAND_TYPES)[number];
+
+export interface BrowserCommandEnvelope {
+  v: 1;
+  type: BrowserCommandType;
+  project_id: string;
+  // Per-command payloads. `message` is only meaningful for dialog_turn;
+  // `feature_id` for start/stop/retry; `hint` only for retry_feature.
+  message?: string;
+  feature_id?: string;
+  hint?: string;
+  [extra: string]: unknown;
+}
+
+/**
+ * Best-effort parser for an inbound browser WS frame. Returns `null`
+ * on any malformed shape — the bridge drops the frame and never
+ * raises, because a misbehaving client must not be able to crash the
+ * bridge and disconnect every other connected browser.
+ *
+ * Validation rules (intentionally minimal — the daemon re-validates):
+ *   - must be a JSON object
+ *   - `v` must equal 1
+ *   - `type` must be one of `BROWSER_COMMAND_TYPES`
+ *   - `project_id` must be a non-empty string
+ *   - per-type requirements:
+ *       dialog_turn    requires `message: string` (length > 0)
+ *       start_feature  requires `feature_id: string` (length > 0)
+ *       stop_feature   requires `feature_id: string` (length > 0)
+ *       retry_feature  requires `feature_id: string` (length > 0); `hint` optional
+ */
+export function parseBrowserCommand(
+  raw: unknown,
+): BrowserCommandEnvelope | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+  if (obj["v"] !== 1) return null;
+  const type = obj["type"];
+  if (typeof type !== "string") return null;
+  if (!(BROWSER_COMMAND_TYPES as ReadonlyArray<string>).includes(type)) {
+    return null;
+  }
+  const projectId = obj["project_id"];
+  if (typeof projectId !== "string" || projectId.length === 0) return null;
+
+  const message = obj["message"];
+  const featureId = obj["feature_id"];
+  const hint = obj["hint"];
+
+  if (type === "dialog_turn") {
+    if (typeof message !== "string" || message.length === 0) return null;
+  } else {
+    // start_feature | stop_feature | retry_feature
+    if (typeof featureId !== "string" || featureId.length === 0) return null;
+  }
+
+  const envelope: BrowserCommandEnvelope = {
+    v: 1,
+    type: type as BrowserCommandType,
+    project_id: projectId,
+  };
+  if (type === "dialog_turn") {
+    envelope.message = message as string;
+  } else {
+    envelope.feature_id = featureId as string;
+    if (type === "retry_feature" && typeof hint === "string") {
+      envelope.hint = hint;
+    }
+  }
+  return envelope;
+}
+
+/**
+ * Exhaustive check helper for the browser-command discriminator,
+ * mirrors `assertNeverDaemonEvent`. Used in `BrowserWsBridge`'s
+ * dispatch `default:` arm to catch a future command added to
+ * `BROWSER_COMMAND_TYPES` without a matching case at compile time.
+ */
+export function assertNeverBrowserCommand(x: never): never {
+  throw new Error(`unhandled browser command: ${JSON.stringify(x)}`);
+}
