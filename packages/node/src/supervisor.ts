@@ -584,17 +584,6 @@ export class DaemonSupervisor extends EventEmitter {
 
   private _startPingLoop(): void {
     this._missedPings = 0;
-    process.stderr.write(
-      JSON.stringify({
-        ts: new Date().toISOString(),
-        level: "debug",
-        component: "node",
-        project_id: null,
-        feature_id: null,
-        event: "ping_loop_started",
-        msg: `ping loop starting; interval=${this._opts.pingIntervalMs}ms timeout=${this._opts.pingTimeoutMs}ms`,
-      }) + "\n",
-    );
     this._pingTimer = setInterval(() => {
       const ws = this._ws;
       if (!ws || this._state !== "RUNNING") return;
