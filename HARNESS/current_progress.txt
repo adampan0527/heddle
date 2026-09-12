@@ -112,8 +112,8 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 SUMMARY
 -------
 Total features: 54
-Passing: 17
-Failing: 37
+Passing: 18
+Failing: 36
 In progress: 1
 Blocked: 0
 Deferred: 0
@@ -153,5 +153,17 @@ Last updated: 2026-09-12
 **Features now passing:** feat-019, feat-020, feat-021 (17 / 54 total)
 
 **Notes:** SESSION 8 shipped 3 features: feat-020 six self-written tools (45 tests); feat-021 sandbox middleware (39 tests); feat-019 agent runtime (20 tests). 17/54 passing. feat-022/044 unblocked next.
+
+---
+### SESSION 9 — 2026-09-12
+
+
+**Worked on:** feat-022 @ b344ac0
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-022 (18 / 54 total)
+
+**Notes:** feat-022: HEDDLE_RECURSION_LIMIT (default 200) + 1s/2s/4s exponential backoff LLM retry (D-041); RecursionLimitError cause='recursion_limit', LLMRetryExhaustedError cause='llm_retry_exhausted'. Also fixed pre-existing test flake: checkpoint id used random memory addresses; switched to len(messages) for monotonic, cross-process-safe ids. 18/190 daemon tests pass (was 170).
 
 ---
