@@ -112,9 +112,9 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 SUMMARY
 -------
 Total features: 54
-Passing: 14
-Failing: 40
-In progress: 0
+Passing: 17
+Failing: 37
+In progress: 1
 Blocked: 0
 Deferred: 0
 Last updated: 2026-09-12
@@ -141,5 +141,17 @@ Last updated: 2026-09-12
 **Features now passing:** feat-018 (14 / 54 total)
 
 **Notes:** feat-018: ProjectCheckpointStore + daemon project_path wiring. 36 new daemon tests (66 total). feat-014/019/024/047 unblocked; next: feat-019 self-written agent runtime.
+
+---
+### SESSION 8 — 2026-09-12
+
+
+**Worked on:** feat-019 @ 4a2a8de
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-019, feat-020, feat-021 (17 / 54 total)
+
+**Notes:** SESSION 8 shipped 3 features: feat-020 six self-written tools (45 tests); feat-021 sandbox middleware (39 tests); feat-019 agent runtime (20 tests). 17/54 passing. feat-022/044 unblocked next.
 
 ---
