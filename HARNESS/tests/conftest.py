@@ -38,18 +38,32 @@ def feature_list_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Redirect the canonical ``feature_list.json`` path inside
     ``tmp_path``.
 
-    Both ``tools.feature_list.FEATURE_LIST_PATH`` and
-    ``tools._feature_io.FEATURE_LIST_PATH`` are patched, because
-    ``HARNESS/tools/feature_list.py`` does ``from tools._feature_io import
-    FEATURE_LIST_PATH`` which copies the reference; mutating the name
-    on one side does not propagate to the other.
+    Patches every module-level binding that resolves to the canonical
+    feature_list.json path, in three layers (each `from ... import X`
+    copies the reference, so patching one binding does not propagate
+    to others):
+
+      1. ``tools.feature_list.FEATURE_LIST_PATH`` — imported by name
+         into the CLI module.
+      2. ``tools._feature_io.FEATURE_LIST_PATH`` — re-exported by the
+         shim from ``heddle_common.feature_list_io.DEFAULT_PATH``.
+      3. ``heddle_common.feature_list_io.DEFAULT_PATH`` — the actual
+         source of truth; read by ``load()`` / ``save()`` etc. when
+         callers (including the CLI's mutation commands) pass ``path=None``.
+
+    Without (3), mutation commands like ``cmd_add`` fall through
+    ``_resolve_path(None) -> DEFAULT_PATH`` and write to the real
+    file at the repo root — a silent leak between test runs.
     """
     target = tmp_path / "feature_list.json"
     import feature_list as feature_list_mod
     import tools._feature_io as feature_io_mod
+    from heddle_common import feature_list_io as feature_lib_mod
     monkeypatch.setattr(feature_list_mod, "FEATURE_LIST_PATH", target,
                         raising=True)
     monkeypatch.setattr(feature_io_mod, "FEATURE_LIST_PATH", target,
+                        raising=True)
+    monkeypatch.setattr(feature_lib_mod, "DEFAULT_PATH", target,
                         raising=True)
     return target
 

@@ -106,7 +106,11 @@ class TestIoHelpers:
             "steps": [], "status": "pending", "priority": "medium",
             "depends_on": [], "attempts": [],
         })
-        feature_io_mod.save_features(data)
+        # ``save`` (re-exported as ``save_features`` for backward compat
+        # in ``tools._feature_io``) takes the path as the first arg; the
+        # legacy single-arg ``save_features(data)`` form was retired
+        # when the mutation logic moved into ``heddle_common``.
+        feature_io_mod.save_features(feature_list_path, data)
         with feature_list_path.open("r", encoding="utf-8") as fh:
             roundtripped = json.load(fh)
         assert any(f["id"] == "added" for f in roundtripped["features"])

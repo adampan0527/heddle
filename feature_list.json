@@ -3,54 +3,6 @@
   "description": "Self-hostable web-based control plane for running long-running, multi-session coding agents on a project, with a DAG-aware kanban board as the primary interface. v0.1 is the first public release: monorepo with browser frontend (React + Vite + Tailwind), Node.js backend (Fastify + WS), and Python daemon (asyncio + LangGraph); loopback-only single-user single-project; one of four LLM providers (anthropic/openai/bedrock/ollama) selected by the user; persistent bottom dialog drives intent classification and auto-decomposition; drag-to-start execution model; manual mode only (no auto-mode toggle).",
   "features": [
     {
-      "id": "feat-001",
-      "category": "functional",
-      "description": "Example feature description (placeholder preserved from HARNESS template init)",
-      "steps": [
-        "Step 1: Navigate to the main interface",
-        "Step 2: Perform the action",
-        "Step 3: Verify the expected result"
-      ],
-      "status": "deferred",
-      "priority": "high",
-      "depends_on": [],
-      "attempts": [],
-      "deferred_until": "2026-08-23",
-      "kind": "feature",
-      "fixes": null,
-      "enhances": null,
-      "superseded_by": null,
-      "implementation_model": null
-    },
-    {
-      "id": "feat-002",
-      "category": "functional",
-      "description": "Second example feature — steps must be real, verifiable actions (placeholder preserved from HARNESS template init).",
-      "steps": [
-        "Open the example page in a browser",
-        "Confirm the page renders without console errors",
-        "Verify the documented UI element is visible"
-      ],
-      "status": "blocked",
-      "priority": "medium",
-      "depends_on": [],
-      "attempts": [
-        {
-          "session": null,
-          "by": "coding-agent",
-          "outcome": "blocked",
-          "note": "baseline was pending; earlier verify command accidentally flipped it to in_progress; next session should reset to pending if no work was actually started",
-          "at": "2026-07-30"
-        }
-      ],
-      "blocked_reason": "baseline was pending; earlier verify command accidentally flipped it to in_progress; next session should reset to pending if no work was actually started",
-      "kind": "feature",
-      "fixes": null,
-      "enhances": null,
-      "superseded_by": null,
-      "implementation_model": null
-    },
-    {
       "id": "feat-003",
       "category": "functional",
       "description": "Monorepo skeleton with pnpm workspaces for JS packages and a single Python package; root pyproject.toml + pnpm-workspace.yaml; packages/{web,daemon,cli} directories with package.json or pyproject.toml each",
@@ -491,7 +443,7 @@
         "Test: start a feature, interrupt it at step 3 (kill daemon), restart daemon, resume feature; assert it continues from step 3 not step 1",
         "Test: simulate a daemon crash mid-feature via SIGKILL; restart; assert the feature is still recoverable"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "priority": "high",
       "depends_on": [
         "feat-017"
@@ -518,6 +470,7 @@
       "priority": "high",
       "depends_on": [
         "feat-018",
+        "feat-020",
         "feat-021"
       ],
       "attempts": [],
@@ -543,9 +496,7 @@
       ],
       "status": "pending",
       "priority": "high",
-      "depends_on": [
-        "feat-019"
-      ],
+      "depends_on": [],
       "attempts": [],
       "kind": "feature",
       "fixes": null,
@@ -1433,12 +1384,12 @@
     }
   ],
   "metadata": {
-    "total_features": 56,
+    "total_features": 54,
     "passing": 13,
-    "failing": 43,
-    "in_progress": 0,
-    "blocked": 1,
-    "deferred": 1,
+    "failing": 41,
+    "in_progress": 1,
+    "blocked": 0,
+    "deferred": 0,
     "last_updated": "2026-09-12"
   },
   "schema_version": 1

@@ -31,11 +31,18 @@ from . import atomic_io
 
 # ---------- path resolution ----------
 
-# Default path: HARNESS/feature_list.json in this dev repo.
-# Daemon calls pass an explicit path (per-project_path / feature_list.json
-# in the user's selected project directory).
+# Default path: project-root `feature_list.json` (the active project list).
+# This project's own working feature list lives at the repo root; the
+# `HARNESS/feature_list.json` next to the vendored harness is the
+# initializer template, not the active list. See HARNESS/CONTRACT.md /
+# HARNESS/HARNESS.md §Architecture for the contract.
+#
+# Daemon calls pass an explicit `path` (per-project
+# `feature_list.json` in the user's selected project directory), so
+# this default only matters for the CLI / library callers that omit
+# the path argument.
 _REPO_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
-DEFAULT_PATH: Final[Path] = _REPO_ROOT / "HARNESS" / "feature_list.json"
+DEFAULT_PATH: Final[Path] = _REPO_ROOT / "feature_list.json"
 
 # Indent for save (matches HARNESS).
 INDENT: Final[int] = 2

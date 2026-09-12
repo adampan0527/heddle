@@ -27,7 +27,17 @@ from _atomic_io import atomic_write_json, atomic_write_text
 # Project paths — script lives in tools/, assume caller ran from project root.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TOOLS_DIR = PROJECT_ROOT / "tools"
-FEATURE_LIST_PATH = PROJECT_ROOT / "feature_list.json"
+# `feature_list.json` for the active project lives at the repo root,
+# not inside HARNESS/. The single source of truth for that path is
+# `heddle_common.feature_list_io.DEFAULT_PATH` (per feat-008 / T-014);
+# import it so this script and `tools/feature_list.py` stay in sync.
+try:
+    from _feature_io import FEATURE_LIST_PATH as _LIB_FEATURE_LIST_PATH  # noqa: E402
+except ImportError:
+    # Fallback: derive the path the same way `feature_list_io` does.
+    _REPO_ROOT = Path(__file__).resolve().parents[3]
+    _LIB_FEATURE_LIST_PATH = _REPO_ROOT / "feature_list.json"
+FEATURE_LIST_PATH = _LIB_FEATURE_LIST_PATH
 DEFAULT_PROGRESS_PATH = PROJECT_ROOT / "current_progress.txt"
 PROGRESS_PATH = DEFAULT_PROGRESS_PATH
 TEMPLATE_PATH = PROJECT_ROOT / "docs" / "templates" / "progress_session_block.md"

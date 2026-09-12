@@ -134,7 +134,20 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TOOLS_DIR = PROJECT_ROOT / "tools"
-FEATURE_LIST_PATH = PROJECT_ROOT / "feature_list.json"
+# `feature_list.json` for the active project lives at the repo root,
+# not inside HARNESS/. The single source of truth for that path is
+# `heddle_common.feature_list_io.DEFAULT_PATH` (per feat-008 / T-014);
+# import it so this script and `tools/feature_list.py` stay in sync.
+sys.path.insert(0, str(PROJECT_ROOT / "tools"))
+try:
+    from _feature_io import FEATURE_LIST_PATH  # noqa: E402
+except ImportError:
+    # Fallback: derive the path the same way `feature_list_io` does.
+    # `feature_list_io` lives at
+    # `<repo_root>/packages/common/heddle_common/feature_list_io.py`,
+    # so parents[3] is the repo root.
+    _REPO_ROOT = Path(__file__).resolve().parents[3]
+    FEATURE_LIST_PATH = _REPO_ROOT / "feature_list.json"
 PROGRESS_PATH = PROJECT_ROOT / "current_progress.txt"
 CODE_STYLE_PATH = PROJECT_ROOT / "CODE_STYLE.md"
 
