@@ -50,12 +50,14 @@ import os
 import signal
 import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Final, Optional
 
 import websockets
 from websockets.asyncio.server import ServerConnection, serve
 
 from heddle_common import logging as _logging
+from heddle_daemon.checkpointing import ProjectCheckpointStore
 
 __all__ = [
     "DEFAULT_HOST",
@@ -89,6 +91,7 @@ ENVELOPE_VERSION_MAX: Final[int] = 1
 # read when constructing a DaemonConfig).
 ENV_PORT: Final[str] = "HEDDLE_DAEMON_PORT"
 ENV_HOST: Final[str] = "HEDDLE_DAEMON_HOST"
+ENV_PROJECT_PATH: Final[str] = "HEDDLE_DAEMON_PROJECT_PATH"
 
 
 # ---------- config ----------
@@ -96,10 +99,19 @@ ENV_HOST: Final[str] = "HEDDLE_DAEMON_HOST"
 
 @dataclass(frozen=True)
 class DaemonConfig:
-    """Loopback-only daemon configuration."""
+    """Loopback-only daemon configuration.
+
+    `project_path` is the per-project working directory passed in by
+    the supervisor (feat-027) or CLI; when set, the daemon brings up
+    a per-project checkpoint store at ``<project_path>/.heddle/`` on
+    start (feat-018). When ``None`` (skeleton-only tests), no
+    checkpoint store is created and the daemon is just an envelope
+    echo server.
+    """
 
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
+    project_path: Optional[Path] = None
 
     def __post_init__(self) -> None:
         # Validate eagerly so the constructor is the single chokepoint
@@ -122,6 +134,20 @@ class DaemonConfig:
                 f"the daemon refuses non-loopback binds (D-037). "
                 f"Use 127.0.0.1 or ::1."
             )
+        # Normalize project_path: ``None`` means "no project bound"
+        # (skeleton / tests); otherwise store a resolved Path.
+        if self.project_path is not None:
+            if isinstance(self.project_path, str):
+                object.__setattr__(self, "project_path", Path(self.project_path))
+            else:
+                object.__setattr__(self, "project_path", self.project_path)
+            resolved = self.project_path.expanduser().resolve()
+            if not resolved.exists() or not resolved.is_dir():
+                raise ValueError(
+                    f"project_path {resolved!r} does not exist or is not a directory; "
+                    f"the daemon refuses to start against a missing project"
+                )
+            object.__setattr__(self, "project_path", resolved)
 
 
 def _is_loopback(host: str) -> bool:
@@ -149,7 +175,7 @@ def _is_loopback(host: str) -> bool:
 
 
 def config_from_env(env: dict[str, str] | None = None) -> DaemonConfig:
-    """Read HEDDLE_DAEMON_PORT / HEDDLE_DAEMON_HOST from the environment.
+    """Read HEDDLE_DAEMON_PORT / HEDDLE_DAEMON_HOST / HEDDLE_DAEMON_PROJECT_PATH.
 
     `env` defaults to `os.environ`; tests pass an explicit dict to
     avoid mutating the real environment.
@@ -163,7 +189,11 @@ def config_from_env(env: dict[str, str] | None = None) -> DaemonConfig:
         raise ValueError(
             f"{ENV_PORT}={port_raw!r} is not an integer; fix the env var"
         ) from exc
-    return DaemonConfig(host=host_raw, port=port)
+    project_raw = src.get(ENV_PROJECT_PATH)
+    project_path: Optional[Path] = None
+    if project_raw:
+        project_path = Path(project_raw)
+    return DaemonConfig(host=host_raw, port=port, project_path=project_path)
 
 
 # ---------- envelope (T-010) ----------
@@ -311,6 +341,11 @@ class Daemon:
         self._server: Optional[Any] = None  # type: ignore[assignment]
         self._connections: set[ServerConnection] = set()
         self._shutdown = asyncio.Event()
+        # Per-project LangGraph checkpoint store (feat-018). Created
+        # lazily in start() if config.project_path is set; exposed via
+        # the .checkpoint_store property for feat-019+ to compile
+        # graphs against. None for skeleton-only / project-less runs.
+        self._checkpoint_store: Optional[ProjectCheckpointStore] = None
 
     @property
     def config(self) -> DaemonConfig:
@@ -334,6 +369,17 @@ class Daemon:
                 pass
         return self._config.port
 
+    @property
+    def checkpoint_store(self) -> Optional[ProjectCheckpointStore]:
+        """The per-project LangGraph checkpoint store, or None if unbound.
+
+        Available after ``start()`` for daemons started with a
+        ``project_path``. feat-019 (agent runtime) and downstream
+        features consume this to compile graphs that auto-persist
+        per-thread state.
+        """
+        return self._checkpoint_store
+
     def register_message_handler(self, handler: MessageHandler) -> None:
         """Replace the message handler. Must be called before start()."""
         if self._server is not None:
@@ -344,7 +390,30 @@ class Daemon:
         self._handler = handler
 
     async def start(self) -> None:
-        """Bind the socket. Raises `OSError` on port conflict."""
+        """Bind the socket. Raises `OSError` on port conflict.
+
+        If ``config.project_path`` is set, also brings up the
+        per-project LangGraph checkpoint store (feat-018). A failure
+        to set up the checkpoint store aborts start() — the daemon
+        refuses to come up against a project it cannot checkpoint
+        to, so callers see a clear error instead of a daemon that
+        silently drops state.
+        """
+        # Bring up the checkpoint store first so a misconfigured
+        # project_path fails fast and never binds the WS port.
+        if self._config.project_path is not None:
+            self._checkpoint_store = ProjectCheckpointStore(
+                project_path=self._config.project_path,
+            )
+            await self._checkpoint_store.setup()
+            _logging.info(
+                component="daemon",
+                event="checkpoint_store_ready",
+                msg=f"checkpoint store ready at {self._checkpoint_store.db_path}",
+                project_path=str(self._config.project_path),
+                db_path=str(self._checkpoint_store.db_path),
+            )
+
         self._server = await serve(
             self._handle_connection,
             self._config.host,
@@ -356,6 +425,7 @@ class Daemon:
             msg=f"heddle daemon bound to {self._config.host}:{self.bound_port}",
             host=self._config.host,
             port=self.bound_port,
+            project_path=str(self._config.project_path) if self._config.project_path else None,
         )
 
     async def stop(self) -> None:
@@ -374,6 +444,21 @@ class Daemon:
             except Exception:
                 pass
         self._connections.clear()
+        # Tear down the checkpoint store (closes the SQLite
+        # connection). Best-effort: a close failure here would mean
+        # the DB is in a bad state, but we still want the daemon to
+        # exit and the OS to clean up file handles.
+        if self._checkpoint_store is not None:
+            try:
+                await self._checkpoint_store.close()
+            except Exception as exc:
+                _logging.warn(
+                    component="daemon",
+                    event="checkpoint_store_close_failed",
+                    msg=f"checkpoint store close raised: {exc}",
+                    project_path=str(self._config.project_path) if self._config.project_path else None,
+                )
+            self._checkpoint_store = None
         self._shutdown.set()
         _logging.info(
             component="daemon",
@@ -512,6 +597,14 @@ def run_daemon(argv: list[str] | None = None) -> int:
         help="Host to bind (default: HEDDLE_DAEMON_HOST or 127.0.0.1). "
              "Must be loopback; non-loopback is refused.",
     )
+    parser.add_argument(
+        "--project-path",
+        type=str,
+        default=None,
+        help="Project working directory (default: HEDDLE_DAEMON_PROJECT_PATH). "
+             "When set, the daemon brings up a per-project LangGraph "
+             "checkpoint store at <project-path>/.heddle/checkpoints.db on start.",
+    )
     args = parser.parse_args(argv)
 
     # Precedence: CLI flag > env var > defaults.
@@ -520,6 +613,8 @@ def run_daemon(argv: list[str] | None = None) -> int:
         src[ENV_PORT] = str(args.port)
     if args.host is not None:
         src[ENV_HOST] = args.host
+    if args.project_path is not None:
+        src[ENV_PROJECT_PATH] = str(args.project_path)
 
     try:
         cfg = config_from_env(src)

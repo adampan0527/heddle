@@ -12,6 +12,7 @@ license = {text = "Apache-2.0"}
 dependencies = [
     "heddle-common",
     "langgraph>=0.2",
+    "langgraph-checkpoint-sqlite>=3.0",
     "langchain-core>=0.3",
     "websockets>=12.0",
 ]

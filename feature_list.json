@@ -443,12 +443,20 @@
         "Test: start a feature, interrupt it at step 3 (kill daemon), restart daemon, resume feature; assert it continues from step 3 not step 1",
         "Test: simulate a daemon crash mid-feature via SIGKILL; restart; assert the feature is still recoverable"
       ],
-      "status": "in_progress",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-017"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-018",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1385,9 +1393,9 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 13,
-    "failing": 41,
-    "in_progress": 1,
+    "passing": 14,
+    "failing": 40,
+    "in_progress": 0,
     "blocked": 0,
     "deferred": 0,
     "last_updated": "2026-09-12"
