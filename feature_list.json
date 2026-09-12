@@ -603,13 +603,21 @@
         "On missing key: raise a structured error that the daemon surfaces to the user via WS event",
         "Test: instantiate each of the four providers with a mocked env var; assert the right ChatModel subclass is returned"
       ],
-      "status": "in_progress",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-011",
         "feat-013"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-023",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1425,9 +1433,9 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 18,
-    "failing": 36,
-    "in_progress": 2,
+    "passing": 19,
+    "failing": 35,
+    "in_progress": 1,
     "blocked": 0,
     "deferred": 0,
     "last_updated": "2026-09-12"

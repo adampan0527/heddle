@@ -18,6 +18,22 @@ dependencies = [
     "PyYAML>=6.0",
 ]
 
+[project.optional-dependencies]
+# feat-023: per-provider LangChain SDKs. A deployment that uses only
+# one provider should install just that one (e.g. `pip install
+# heddle-daemon[anthropic]`). ``all`` covers the default templates
+# so `heddle test` / `heddle start` work out-of-the-box.
+anthropic = ["langchain-anthropic>=0.3"]
+openai = ["langchain-openai>=0.3"]
+bedrock = ["langchain-aws>=0.3"]
+ollama = ["langchain-ollama>=0.3"]
+all = [
+    "langchain-anthropic>=0.3",
+    "langchain-openai>=0.3",
+    "langchain-aws>=0.3",
+    "langchain-ollama>=0.3",
+]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["heddle_daemon*"]
