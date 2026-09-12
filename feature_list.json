@@ -928,13 +928,21 @@
         "Emit state change events so UI can show connection status",
         "Test: start server, connect client, kill server, restart server; assert client reconnects automatically and queued messages are sent"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-029",
         "feat-032"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-033",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1502,8 +1510,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 27,
-    "failing": 27,
+    "passing": 28,
+    "failing": 26,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,
