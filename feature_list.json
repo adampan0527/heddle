@@ -725,7 +725,7 @@
         "Test: start supervisor with a fake daemon that exits cleanly; assert supervisor respawns after delay",
         "Test: simulate WS disconnect (kill daemon's WS server); assert supervisor respawns"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "priority": "high",
       "depends_on": [
         "feat-017",
@@ -1451,7 +1451,7 @@
     "total_features": 54,
     "passing": 21,
     "failing": 33,
-    "in_progress": 0,
+    "in_progress": 1,
     "blocked": 0,
     "deferred": 0,
     "last_updated": "2026-09-12"
