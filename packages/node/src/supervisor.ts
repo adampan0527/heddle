@@ -27,7 +27,7 @@ import { EventEmitter } from "node:events";
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { delimiter, resolve } from "node:path";
-import type { WebSocket as WSWebSocket } from "ws";
+import { WebSocket as WSWebSocket } from "ws";
 
 // ---------------------------------------------------------------------------
 // Constants (all `as const` — exported so tests can assert against them).
@@ -316,7 +316,10 @@ export class DaemonSupervisor extends EventEmitter {
           return;
         }
         this.emit("daemon-spawned", { pid: child.pid ?? -1 });
-        // WS connect + ping loop are wired by `_connectWs()` (Step 3 / 4).
+        // Open the WS client now that the daemon subprocess is up. The
+        // connect path is async — failures flow through `_onWsClose` or
+        // `_onWsConnectFailed` depending on whether the socket ever opened.
+        void this._connectWs();
       });
 
       child.once("exit", (code, signal) => {
@@ -451,5 +454,188 @@ export class DaemonSupervisor extends EventEmitter {
         // already gone
       }
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // WS connect + ping/pong health probe (Steps 3 + 4).
+  // -------------------------------------------------------------------------
+
+  /**
+   * Open a WS client to the daemon's loopback address. We retry on
+   * connect failure with exponential-ish backoff (every 200ms) until the
+   * total budget CONNECT_TIMEOUT_MS is exhausted, because the daemon's
+   * asyncio WS server starts a fraction of a second after the subprocess
+   * 'spawn' event fires — on a cold start it can take 100–500ms for the
+   * socket to actually bind.
+   */
+  private async _connectWs(): Promise<void> {
+    if (this._stopRequested) return;
+    const url = `ws://${this._opts.daemonHost}:${this._opts.daemonPort}/ws`;
+    const deadline = Date.now() + this._opts.connectTimeoutMs;
+    const RETRY_MS = 200;
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      if (this._stopRequested) return;
+      const opened = await this._tryConnectOnce(url);
+      if (opened) return; // success — handler set up state + ping loop
+      if (Date.now() >= deadline) {
+        // Out of retry budget. Emit disconnect so downstream sees the cause.
+        this.emit("ws-disconnected", { code: 1006, reason: "connect_timeout" });
+        this._enterDegraded("ws_disconnect");
+        return;
+      }
+      await new Promise((r) => setTimeout(r, RETRY_MS));
+    }
+  }
+
+  /**
+   * One connect attempt. Resolves to true if 'open' fired, false if the
+   * socket closed before opening.
+   */
+  private _tryConnectOnce(url: string): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      const ws = new WSWebSocket(url);
+      let settled = false;
+      const settle = (ok: boolean): void => {
+        if (settled) return;
+        settled = true;
+        resolve(ok);
+      };
+
+      const connectWatchdog = setTimeout(() => {
+        // If we still haven't resolved within this attempt's slice, force-
+        // close and report failure. The outer retry loop will start again.
+        if (!settled) {
+          try {
+            ws.terminate();
+          } catch {
+            // ignore
+          }
+          settle(false);
+        }
+      }, Math.min(2000, this._opts.connectTimeoutMs));
+
+      ws.once("open", () => {
+        clearTimeout(connectWatchdog);
+        if (this._stopRequested) {
+          try {
+            ws.close();
+          } catch {
+            // ignore
+          }
+          settle(false);
+          return;
+        }
+        this._ws = ws;
+        this._state = "RUNNING";
+        this.emit("ws-connected", {});
+        this.emit("ws-handshake", { ws });
+        this._startPingLoop();
+        settle(true);
+      });
+
+      ws.on("close", (code, reasonBuf) => {
+        clearTimeout(connectWatchdog);
+        if (!settled) {
+          // Never opened — this is a retry-trigger, not a runtime disconnect.
+          settle(false);
+          return;
+        }
+        // Already opened and settled: this is a runtime close. Hand off
+        // to the lifecycle handler.
+        const reason = reasonBuf?.toString() ?? "";
+        this._onWsClose(code, reason);
+      });
+
+      ws.on("error", () => {
+        // Errors always precede a 'close' event in `ws`, so we don't need
+        // to act here — `_onWsClose` or the settle(false) path will fire next.
+      });
+
+      ws.on("pong", () => {
+        this._onWsPong();
+      });
+    });
+  }
+
+  private _onWsClose(code: number, reason: string): void {
+    if (this._ws) {
+      this._ws.removeAllListeners();
+      this._ws = null;
+    }
+    this._stopPingLoop();
+    if (this._stopRequested) return;
+    this.emit("ws-disconnected", { code, reason });
+    // Force-kill the daemon subprocess so its 'exit' event fires (it may
+    // still be alive momentarily). _onChildExit will then drive the
+    // respawn; if it has already done so, _scheduleRestart's
+    // "already scheduled" guard makes the second call a no-op.
+    const child = this._child;
+    if (child && child.exitCode === null) {
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        // ignore
+      }
+    }
+    this._enterDegraded("ws_disconnect");
+  }
+
+  private _startPingLoop(): void {
+    this._missedPings = 0;
+    process.stderr.write(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "debug",
+        component: "node",
+        project_id: null,
+        feature_id: null,
+        event: "ping_loop_started",
+        msg: `ping loop starting; interval=${this._opts.pingIntervalMs}ms timeout=${this._opts.pingTimeoutMs}ms`,
+      }) + "\n",
+    );
+    this._pingTimer = setInterval(() => {
+      const ws = this._ws;
+      if (!ws || this._state !== "RUNNING") return;
+      try {
+        ws.ping();
+      } catch {
+        // ignore — close handler will fire next
+        return;
+      }
+      this._pongDeadline = setTimeout(() => {
+        this._pongDeadline = null;
+        this._missedPings += 1;
+        if (this._missedPings >= this._opts.maxMissedPings) {
+          // Force-kill the daemon; the close handler schedules the respawn.
+          const child = this._child;
+          if (child && child.exitCode === null) {
+            try {
+              child.kill("SIGKILL");
+            } catch {
+              // ignore
+            }
+          }
+          // Mark the cause as ping_timeout via a budget-warning so feat-047
+          // can distinguish from generic ws_disconnect if it wants to.
+          this.emit("restart-budget-warning", { cause: "ping_timeout" });
+          this._enterDegraded("ping_timeout");
+        } else {
+          this.emit("ws-ping-missed", { consecutive: this._missedPings });
+        }
+      }, this._opts.pingTimeoutMs);
+    }, this._opts.pingIntervalMs);
+  }
+
+  private _onWsPong(): void {
+    // Any pong arrival — even late — resets the missed counter. This
+    // matches D-051's "daemon considered dead" semantics: a responsive
+    // daemon is healthy regardless of jitter.
+    if (this._pongDeadline) {
+      clearTimeout(this._pongDeadline);
+      this._pongDeadline = null;
+    }
+    this._missedPings = 0;
   }
 }

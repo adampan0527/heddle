@@ -106,6 +106,31 @@ def _select_handler(mode: str):
     raise ValueError(f"unknown mode: {mode}")
 
 
+class _SilentConnection(ServerConnection):
+    """ServerConnection subclass that never auto-replies to client ping frames.
+
+    mode-c needs to simulate a daemon that is "alive but unresponsive to
+    pings" so the supervisor's ping/pong health probe trips. The default
+    websockets library auto-replies to any incoming ping frame regardless
+    of the server's own ping_interval setting, which would silently mask
+    the test. We monkey-patch `Protocol.send_frame` to drop OP_PONG frames
+    while leaving everything else intact.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        proto = self.protocol
+        original_send_frame = proto.send_frame
+
+        def _send_frame(frame):
+            # 0xA = OP_PONG. Drop it silently.
+            if frame.opcode == 0xA:
+                return None
+            return original_send_frame(frame)
+
+        proto.send_frame = _send_frame
+
+
 async def _run(mode: str) -> NoReturn:
     host, port = _resolve_host_port()
     boot_delay_ms = int(
@@ -113,6 +138,14 @@ async def _run(mode: str) -> NoReturn:
     )
 
     handler, kwargs = _select_handler(mode)
+
+    # mode-c uses a ServerConnection subclass that drops client pings
+    # instead of auto-replying, so the supervisor's missed-pong counter
+    # actually accumulates.
+    create_kw: dict[str, object] = {}
+    if mode == "mode-c":
+        create_kw["create_connection"] = _SilentConnection
+
     _log(
         "fixture_binding",
         f"mode={mode} host={host} port={port}",
@@ -123,7 +156,7 @@ async def _run(mode: str) -> NoReturn:
 
     # `serve()` blocks until `server.close()` is called. We schedule that
     # for mode-a after MODE_A_LIFETIME_MS; modes b/c run until killed.
-    async with serve(handler, host=host, port=port, **kwargs) as server:
+    async with serve(handler, host=host, port=port, **kwargs, **create_kw) as server:
         print(f"READY {port}", flush=True)
         if boot_delay_ms > 0:
             await asyncio.sleep(boot_delay_ms / 1000.0)
