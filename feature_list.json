@@ -333,13 +333,21 @@
         "Test: register a project, run a fake log write to its log file, remove the project, assert the log file is gone",
         "Test: remove a project with an in_progress feature; assert the feature is aborted and the log files are deleted"
       ],
-      "status": "in_progress",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-012",
         "feat-018"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": 11,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-014",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -684,13 +692,21 @@
         "Test: start the server; curl http://127.0.0.1:5173/api/projects returns 501",
         "Test: attempt to bind to 0.0.0.0; assert exit with clear error message"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-003",
         "feat-005"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": 11,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-026",
+          "at": "2026-09-12"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1433,9 +1449,9 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 19,
-    "failing": 35,
-    "in_progress": 1,
+    "passing": 21,
+    "failing": 33,
+    "in_progress": 0,
     "blocked": 0,
     "deferred": 0,
     "last_updated": "2026-09-12"
