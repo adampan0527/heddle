@@ -245,6 +245,15 @@ class RouteHandler:
     # resources in v0.1, so forgetting to call it is benign).
     _attempt_llms: dict[str, tuple[str, Any]] = field(default_factory=dict)
 
+    # feat-048: optional structured event-log writer. ``None``
+    # means "no file sink attached" (tests, skeleton mode); when
+    # set, ``emit_event`` dual-writes to both the WS stream and the
+    # per-project ``events.jsonl`` sidecar. The daemon wires this
+    # attribute at connection time inside ``_handle_connection`` so
+    # a single handler instance services every per-connection
+    # emitter with the same logger.
+    event_log: Any = None
+
     def __post_init__(self) -> None:
         if self.projects_path is None:
             self.projects_path = default_projects_path()
@@ -265,7 +274,7 @@ class RouteHandler:
         feature_id: Optional[str],
         payload: dict[str, Any],
     ) -> None:
-        """Push one unsolicited event envelope onto the WS.
+        """Push one unsolicited event envelope onto the WS and the event log.
 
         No-op when ``event_emitter`` is unset (tests). When set, the
         emitter is responsible for adding the ``v`` + ``type: "event"``
@@ -273,27 +282,64 @@ class RouteHandler:
         are swallowed because we're typically inside a handler that's
         about to return its terminal response envelope; an event-send
         failure must not turn a successful operation into an error.
+
+        feat-048: when ``event_log`` is also wired in by the daemon,
+        the same event body is appended to the per-project
+        ``events.jsonl`` sidecar so a post-mortem or SFT prep step
+        can read every state-changing operation from a single
+        append-only log. The file sink uses a dedicated
+        ``record(...)`` call (rather than reusing the WS emitter) so
+        a WS-send failure cannot roll back the on-disk audit line —
+        the audit log is the durable record; the WS stream is the
+        live notification. Best-effort: a file-sink failure is
+        logged at warn level and swallowed.
         """
-        if self.event_emitter is None:
+        if self.event_emitter is None and self.event_log is None:
             return
-        body = {
-            "event": event_name,
-            "project_id": project_id,
-            "feature_id": feature_id,
-            "payload": payload,
-        }
-        try:
-            await self.event_emitter(body)
-        except Exception as exc:  # noqa: BLE001 — emit failures are best-effort
-            _logging.warn(
-                component="daemon",
-                event="event_emit_failed",
-                msg=f"event {event_name!r} emit failed: {exc}",
-                event_name=event_name,
-                project_id=project_id,
-                feature_id=feature_id,
-                error_type=type(exc).__name__,
-            )
+        if self.event_emitter is not None:
+            body = {
+                "event": event_name,
+                "project_id": project_id,
+                "feature_id": feature_id,
+                "payload": payload,
+            }
+            try:
+                await self.event_emitter(body)
+            except Exception as exc:  # noqa: BLE001 — emit failures are best-effort
+                _logging.warn(
+                    component="daemon",
+                    event="event_emit_failed",
+                    msg=f"event {event_name!r} emit failed: {exc}",
+                    event_name=event_name,
+                    project_id=project_id,
+                    feature_id=feature_id,
+                    error_type=type(exc).__name__,
+                )
+        # feat-048: file-sink write happens AFTER the WS push so a
+        # slow / failed WS send does not delay the audit line.
+        # ``event_log.record`` is sync + flushed-per-call, matching
+        # the LLM audit logger's crash-safety contract.
+        if self.event_log is not None:
+            try:
+                self.event_log.record(
+                    event=event_name,
+                    project_id=project_id,
+                    feature_id=feature_id,
+                    payload=payload,
+                )
+            except Exception as exc:  # noqa: BLE001 — file sink failures are best-effort
+                _logging.warn(
+                    component="daemon",
+                    event="event_log_append_failed",
+                    msg=(
+                        f"event {event_name!r} log append failed: {exc}"
+                    ),
+                    event_name=event_name,
+                    project_id=project_id,
+                    feature_id=feature_id,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
 
     # ----- public dispatch -----
 

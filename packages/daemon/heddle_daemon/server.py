@@ -72,6 +72,7 @@ from heddle_daemon.crash_recovery import (
     BLOCKED_REASON_RESTART_BUDGET,
     resume_in_flight_features,
 )
+from heddle_common.event_log import EventLogLogger
 from heddle_daemon.llm_audit import LlmAuditLogger, resolve_logs_dir
 from heddle_daemon.restart_budget import (
     RestartBudgetConfig,
@@ -515,6 +516,14 @@ class Daemon:
         # survive a project switch (same lifetime contract as
         # ``_log_sink``).
         self._llm_audit: LlmAuditLogger | None = None
+        # feat-048: per-project structured event-log writer. Same
+        # lifetime contract as ``_llm_audit`` (created in
+        # ``start()``, closed in ``stop()`` and
+        # ``_on_project_removed``). Threaded into
+        # ``RouteHandler.emit_event`` by ``_handle_connection`` so
+        # every WS-pushed event lands a matching line in
+        # ``<logs_dir>/<project_id>/events.jsonl``.
+        self._event_log: EventLogLogger | None = None
 
     @property
     def config(self) -> DaemonConfig:
@@ -640,6 +649,10 @@ class Daemon:
         # unmatched project → warn event + continue, no abort.
         self._attach_llm_audit()
 
+        # feat-048: attach a per-project structured event-log writer.
+        # Same graceful fallback contract as the audit logger above.
+        self._attach_event_log()
+
         # feat-047: resume in-flight features from the project
         # checkpoint DB. Runs AFTER the checkpoint store is up
         # (so ``alist()`` can query thread presence), AFTER the
@@ -676,6 +689,9 @@ class Daemon:
         # best-effort contract as the rotating sink — close failure
         # does not block teardown.
         self._close_llm_audit()
+        # feat-048: close the per-project structured event-log
+        # writer. Same best-effort contract.
+        self._close_event_log()
         if self._server is not None:
             self._server.close()
             try:
@@ -764,6 +780,9 @@ class Daemon:
         # feat-025: close the per-project LLM audit logger with the
         # same lifetime contract as the rotating sink.
         self._close_llm_audit()
+        # feat-048: close the per-project structured event-log
+        # writer. Same lifetime contract.
+        self._close_event_log()
         # 1. Signal every in-flight thread. Asyncio's ``Event.set()``
         # is idempotent and thread-safe so calling it repeatedly (or
         # on an already-set event) is harmless.
@@ -1049,6 +1068,119 @@ class Daemon:
             )
         finally:
             self._llm_audit = None
+
+    # ---------- feat-048: structured event-log sink ----------
+
+    def _attach_event_log(self) -> None:
+        """Attach a per-project structured event-log writer (feat-048).
+
+        Mirrors :meth:`_attach_llm_audit`: matches
+        ``config.project_path`` against registered projects (D-057);
+        on match, builds an :class:`EventLogLogger` writing to
+        ``<logs_dir>/<project_id>/events.jsonl``. On any resolution
+        / IO failure (project_path unset, projects.json unreadable,
+        no matching project, FS error creating the directory),
+        emits a structured ``event_log_skipped`` warn event and
+        returns so the daemon keeps serving — same graceful-fallback
+        contract as feat-015 / feat-025.
+
+        v0.1 is single-project-at-a-time so this is called once
+        per ``start()``.
+        """
+        if self._config.project_path is None:
+            _logging.warn(
+                component="daemon",
+                event="event_log_skipped",
+                msg=(
+                    "no project_path configured; daemon serves without a "
+                    "per-project structured event log (skeleton mode)"
+                ),
+                reason="project_path_unset",
+            )
+            return
+        try:
+            registered = list_projects()
+        except Exception as exc:
+            _logging.warn(
+                component="daemon",
+                event="event_log_skipped",
+                msg=f"cannot read projects registry: {exc}",
+                reason="projects_read_failed",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+            return
+        target = self._config.project_path
+        for proj in registered:
+            try:
+                if Path(proj.path).resolve() == target:
+                    if self._config.logs_dir is not None:
+                        logs_dir = self._config.logs_dir
+                    else:
+                        logs_dir = Path(DEFAULT_LOGS_DIR).expanduser()
+                    try:
+                        self._event_log = EventLogLogger(
+                            logs_dir=logs_dir, project_id=proj.id
+                        )
+                    except Exception as exc:
+                        # FS failure (e.g. read-only home dir). Log +
+                        # continue without the event log rather than
+                        # refuse to start.
+                        _logging.warn(
+                            component="daemon",
+                            event="event_log_skipped",
+                            msg=(
+                                f"cannot attach structured event log at "
+                                f"{logs_dir / proj.id}: {exc}"
+                            ),
+                            reason="event_log_attach_failed",
+                            project_id=proj.id,
+                            logs_dir=str(logs_dir),
+                            error_type=type(exc).__name__,
+                            error_message=str(exc),
+                        )
+                        return
+                    _logging.info(
+                        component="daemon",
+                        event="event_log_attached",
+                        msg=(
+                            f"structured event log attached at "
+                            f"{self._event_log.log_path}"
+                        ),
+                        project_id=proj.id,
+                        logs_dir=str(logs_dir),
+                        log_path=str(self._event_log.log_path),
+                    )
+                    return
+            except OSError:
+                continue
+        _logging.warn(
+            component="daemon",
+            event="event_log_skipped",
+            msg=(
+                f"no registered project matches project_path={target}; "
+                "daemon serves without a per-project structured event log"
+            ),
+            reason="no_matching_project",
+            project_path=str(target),
+        )
+
+    def _close_event_log(self) -> None:
+        """Close the per-project event-log writer. Idempotent."""
+        if self._event_log is None:
+            return
+        try:
+            self._event_log.close()
+        except Exception as exc:
+            _logging.warn(
+                component="daemon",
+                event="event_log_close_failed",
+                msg=f"structured event log close raised: {exc}",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+        finally:
+            self._event_log = None
 
     # ---------- feat-024: restart recovery hook ----------
 
@@ -1466,6 +1598,14 @@ class Daemon:
                             await conn.send(env_obj.to_json())
 
                         self._routes.event_emitter = _emit_event
+                        # feat-048: wire the per-project structured
+                        # event-log writer (None when the daemon
+                        # serves without a project_path / before the
+                        # log was attached). RouteHandler.emit_event
+                        # dual-writes to both this sink and the WS
+                        # emitter above; the file sink is the
+                        # durable audit record.
+                        self._routes.event_log = self._event_log
                         try:
                             resp = await self._routes.dispatch_envelope(env)
                         except Exception as exc:

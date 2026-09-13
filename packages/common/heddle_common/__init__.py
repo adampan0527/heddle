@@ -127,3 +127,15 @@ from .dag_validation import (  # noqa: F401
     UNKNOWN_DEP_PREFIX,
     validate_drafts,
 )
+
+# Re-export the structured event log API (feat-048) so the daemon's
+# lifecycle wiring and the route handler's ``emit_event`` can both
+# import from the top-level surface. The on-disk sink at
+# ``~/.heddle/logs/<project_id>/events.jsonl`` is the durable
+# companion to the WS event stream — every state-changing operation
+# writes to both.
+from .event_log import (  # noqa: F401
+    DEFAULT_EVENT_LOG_FILENAME,
+    EventLogLogger,
+    resolve_event_log_path,
+)
