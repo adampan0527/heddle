@@ -58,6 +58,14 @@ tmp/
 # recreated on every mutating run and are safe to delete at any time.
 *.lock
 
+# --- Test harness artifacts ---
+# Per-run test workspace directories produced by the daemon's
+# restart-resilience tests (e.g. `heddle_rts_<token>/`). Each test
+# creates one in tmp_path; if a test crashes mid-run the dir is
+# left behind. They are not part of the source tree and have no
+# value at HEAD or in CI.
+packages/node/heddle_rts_*/
+
 # --- Allow tracked recommendations and placeholders ---
 !.gitkeep
 !.vscode/extensions.json
