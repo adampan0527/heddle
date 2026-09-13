@@ -1662,13 +1662,21 @@
         "User clicks 'Approve' or 'Deny' in the modal; response goes back to the daemon via WS",
         "Test: set sandbox=edit-with-confirm; trigger a Write tool call; assert the browser shows a confirm modal"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "medium",
       "depends_on": [
         "feat-021",
         "feat-038"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-055",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1702,8 +1710,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 52,
-    "failing": 2,
+    "passing": 53,
+    "failing": 1,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

@@ -16,7 +16,22 @@ export interface Project {
   path: string;
   added_at: string;
   last_accessed_at: string;
+  /**
+   * feat-055 / D-053: per-project sandbox level, resolved from
+   * `<project>/.heddle/config.yaml` by the daemon. Absent when the
+   * daemon has never read the config (legacy v0.1 behavior). The UI
+   * defaults missing values to `"full"` for backward compat.
+   */
+  sandbox_level?: SandboxLevel;
 }
+
+/**
+ * feat-055 / D-053: per-project sandbox level. The daemon's
+ * `ToolDispatchMiddleware` (feat-021) enforces these levels against
+ * mutating tool calls. String-literal union so typos are caught at
+ * compile time; the daemon validates the same set on the wire.
+ */
+export type SandboxLevel = "read-only" | "edit-with-confirm" | "full";
 
 /** Card kind discriminator (feat-010). */
 export type FeatureKind = "feature" | "bugfix" | "enhancement";

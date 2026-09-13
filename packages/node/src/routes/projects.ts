@@ -32,7 +32,7 @@ import type { FastifyInstance } from "fastify";
 import type { FastifyPluginAsync } from "fastify";
 import { Type } from "@sinclair/typebox";
 
-import type { Project } from "@heddle/shared";
+import type { Project, SandboxLevel } from "@heddle/shared";
 
 import type { DaemonSupervisor } from "../supervisor.js";
 import {
@@ -52,6 +52,14 @@ const ProjectSchema = Type.Object({
   path: Type.String(),
   added_at: Type.String(),
   last_accessed_at: Type.String(),
+  sandbox_level: Type.Optional(
+    Type.Union([
+      Type.Literal("read-only"),
+      Type.Literal("edit-with-confirm"),
+      Type.Literal("full"),
+      Type.Null(),
+    ]),
+  ),
 });
 
 const ProjectListResponseSchema = Type.Object({
@@ -75,6 +83,17 @@ const ProjectResponseSchema = Type.Object({
 
 const ParamsWithIdSchema = Type.Object({
   id: Type.String({ minLength: 1 }),
+});
+
+// feat-055: PATCH /api/projects/:id accepts a sandbox_level change.
+// We only validate the level enum here; the daemon re-validates so a
+// stray or future variant still surfaces a clean error envelope.
+const PatchProjectBodySchema = Type.Object({
+  sandbox_level: Type.Union([
+    Type.Literal("read-only"),
+    Type.Literal("edit-with-confirm"),
+    Type.Literal("full"),
+  ]),
 });
 
 // ---------- plugin options ----------
@@ -136,6 +155,48 @@ export const registerProjectRoutes: FastifyPluginAsync<
       }
       reply.code(201);
       return out.okBody;
+    },
+  );
+
+  // PATCH /api/projects/:id — feat-055 / D-053: update per-project
+  // sandbox level. Writes through to ``.heddle/config.yaml`` via the
+  // daemon's ``project_sandbox_set`` handler.
+  typed.patch(
+    "/api/projects/:id",
+    {
+      schema: {
+        params: ParamsWithIdSchema,
+        body: PatchProjectBodySchema,
+        response: { 200: ProjectResponseSchema },
+      },
+    },
+    async (req: any, reply: any): Promise<ApiOk<{ project: Project }> | ApiErr> => {
+      // The daemon returns ``{project_id, sandbox_level}``; we
+      // forward that and let TanStack Query's invalidation refresh
+      // the full project row. Forward as a synthesized ``project``
+      // so the response shape matches the schema.
+      const out = await forwardOrFail<{ project_id: string; sandbox_level: string }>(
+        supervisor,
+        "project_sandbox_set",
+        {
+          project_id: req.params.id,
+          sandbox_level: req.body.sandbox_level as SandboxLevel,
+        },
+        reply,
+      );
+      if (!out.ok) {
+        reply.code(out.httpStatus);
+        return out.errBody;
+      }
+      const project: Project = {
+        id: out.okBody.data.project_id,
+        name: "",
+        path: "",
+        added_at: "",
+        last_accessed_at: "",
+        sandbox_level: out.okBody.data.sandbox_level as SandboxLevel,
+      };
+      return { ok: true, data: { project } };
     },
   );
 

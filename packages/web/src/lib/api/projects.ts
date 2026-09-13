@@ -17,6 +17,7 @@ import type {
   ApiErr,
   ApiOk,
   Project,
+  SandboxLevel,
 } from "@heddle/shared";
 
 import { apiFetch } from "../query-client.js";
@@ -69,6 +70,40 @@ export function useDeleteProject(): UseMutationResult<
       });
       const parsed = (await res.json()) as ApiOk<{ project: Project }> | ApiErr;
       return unwrap(parsed, res.status).project;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: PROJECTS_KEY });
+    },
+  });
+}
+
+// feat-055 / D-053: PATCH a project's sandbox level. The daemon writes
+// to `<project>/.heddle/config.yaml`; we invalidate the projects query
+// so the SandboxIndicator's badge updates immediately.
+export function useUpdateProjectSandbox(): UseMutationResult<
+  { project_id: string; sandbox_level: SandboxLevel },
+  Error,
+  { projectId: string; sandbox_level: SandboxLevel }
+> {
+  const qc = useQueryClient();
+  return useMutation<
+    { project_id: string; sandbox_level: SandboxLevel },
+    Error,
+    { projectId: string; sandbox_level: SandboxLevel }
+  >({
+    mutationFn: async ({ projectId, sandbox_level }) => {
+      const res = await apiFetch(`/api/projects/${projectId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ sandbox_level }),
+      });
+      const parsed = (await res.json()) as
+        | ApiOk<{ project_id: string; sandbox_level: string }>
+        | ApiErr;
+      const data = unwrap(parsed, res.status);
+      return {
+        project_id: data.project_id,
+        sandbox_level: data.sandbox_level as SandboxLevel,
+      };
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: PROJECTS_KEY });

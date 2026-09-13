@@ -87,6 +87,8 @@ from heddle_common.project_cascade import (
 from .decompose import DecomposeError, propose_drafts
 from .intent import classify_intent
 from .llm import LLMConfigError
+from .sandbox import SandboxConfigError
+from .sandbox_io import read_sandbox_config, write_sandbox_level
 from .server import JsonEnvelope, build_envelope
 
 __all__ = [
@@ -373,6 +375,12 @@ class RouteHandler:
             if env.type == "project_remove":
                 data = await self._project_remove(env.extra)
                 return self._ok_response(req_id, env.type, data)
+            if env.type == "project_sandbox_get":
+                data = self._project_sandbox_get(env.extra)
+                return self._ok_response(req_id, env.type, data)
+            if env.type == "project_sandbox_set":
+                data = self._project_sandbox_set(env.extra)
+                return self._ok_response(req_id, env.type, data)
             if env.type == "feature_list":
                 data = self._feature_list(env.extra)
                 return self._ok_response(req_id, env.type, data)
@@ -446,7 +454,30 @@ class RouteHandler:
     def _project_list(self) -> dict[str, Any]:
         """List every registered project."""
         projects = list_projects(self.projects_path)
-        return {"projects": [p.to_dict() for p in projects]}
+        # feat-055: attach the resolved sandbox_level to each project
+        # so the Web UI can render the SandboxIndicator without a
+        # second round-trip per project.
+        enriched: list[dict[str, Any]] = []
+        for p in projects:
+            row = p.to_dict()
+            try:
+                cfg = read_sandbox_config(p.path)
+            except SandboxConfigError as exc:
+                # A malformed config should not block the project list;
+                # surface the error so the UI can render a "broken" badge.
+                _logging.warn(
+                    component="routes",
+                    event="sandbox_config_unreadable",
+                    msg=f"could not read sandbox config for {p.id}: {exc}",
+                    project_id=p.id,
+                    error=str(exc),
+                )
+                row["sandbox_level"] = None
+                row["sandbox_error"] = str(exc)
+            else:
+                row["sandbox_level"] = cfg.level.value
+            enriched.append(row)
+        return {"projects": enriched}
 
     def _project_add(self, extras: dict[str, Any]) -> dict[str, Any]:
         """Register a new project. Payload: ``{path, name?}``."""
@@ -478,6 +509,41 @@ class RouteHandler:
                 f"project {project_id!r} not found", code="not_found"
             )
         return {"project": removed.to_dict()}
+
+    # ----- feat-055: sandbox level read/write -----
+
+    def _project_sandbox_get(self, extras: dict[str, Any]) -> dict[str, Any]:
+        """Read the project's sandbox_level. Payload: ``{project_id}``."""
+        project_id = extras.get("project_id")
+        if not isinstance(project_id, str) or not project_id:
+            raise RoutesError("project_id must be a non-empty string")
+        project = self._lookup_project(project_id)
+        try:
+            cfg = read_sandbox_config(project.path)
+        except SandboxConfigError as exc:
+            raise RoutesError(str(exc), code="invalid_input") from exc
+        return {
+            "project_id": project_id,
+            "sandbox_level": cfg.level.value,
+        }
+
+    def _project_sandbox_set(self, extras: dict[str, Any]) -> dict[str, Any]:
+        """Update the project's sandbox_level. Payload: ``{project_id, sandbox_level}``."""
+        project_id = extras.get("project_id")
+        if not isinstance(project_id, str) or not project_id:
+            raise RoutesError("project_id must be a non-empty string")
+        level = extras.get("sandbox_level")
+        if not isinstance(level, str) or not level:
+            raise RoutesError("sandbox_level must be a non-empty string")
+        project = self._lookup_project(project_id)
+        try:
+            cfg = write_sandbox_level(project.path, level)
+        except SandboxConfigError as exc:
+            raise RoutesError(str(exc), code="invalid_input") from exc
+        return {
+            "project_id": project_id,
+            "sandbox_level": cfg.level.value,
+        }
 
     def _feature_list(self, extras: dict[str, Any]) -> dict[str, Any]:
         """List features for a given project. Payload: ``{project_id}``."""

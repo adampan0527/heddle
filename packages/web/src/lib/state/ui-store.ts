@@ -61,6 +61,25 @@ export interface UiState {
    */
   pendingConfirmation: PendingConfirmation | null;
   setPendingConfirmation: (req: PendingConfirmation | null) => void;
+  /**
+   * feat-055 / D-053: sandbox-driven confirmation (one at a time).
+   * The daemon (via WS) or the SandboxIndicator's "test destructive"
+   * button park a request here when a destructive tool call needs
+   * the user's OK. App.tsx mounts ConfirmationDialog at the root
+   * and reads this state.
+   */
+  pendingSandboxRequest: PendingSandboxRequest | null;
+  setPendingSandboxRequest: (req: PendingSandboxRequest | null) => void;
+}
+
+export interface PendingSandboxRequest {
+  id: string;
+  toolName: string;
+  args: unknown;
+  /** Approve — run the underlying mutation (today: a no-op demo). */
+  approve: () => Promise<void>;
+  /** Deny — refuse the call without running anything. */
+  deny: () => void;
 }
 
 export interface PendingConfirmation {
@@ -131,6 +150,12 @@ export const useUiStore = create<UiState>()(
       // closed over stale mutations).
       pendingConfirmation: null,
       setPendingConfirmation: (req) => set({ pendingConfirmation: req }),
+      // feat-055: sandbox-driven confirmation request. Not persisted
+      // — a synthetic demo request is short-lived; a real WS-driven
+      // one is closed over an active WS connection that would die on
+      // reload anyway.
+      pendingSandboxRequest: null,
+      setPendingSandboxRequest: (req) => set({ pendingSandboxRequest: req }),
     }),
     {
       name: "heddle.ui.state",

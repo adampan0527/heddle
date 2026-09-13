@@ -177,6 +177,53 @@ describe("routes/projects", () => {
     });
     expect(res.statusCode).toBe(409);
   });
+
+  // feat-055 / D-053: PATCH /api/projects/:id updates the sandbox
+  // level (writes to .heddle/config.yaml via the daemon).
+  test("PATCH /api/projects/:id forwards sandbox_level", async () => {
+    supervisor.nextResponses.push({
+      ok: true,
+      data: { project_id: "p1", sandbox_level: "edit-with-confirm" },
+    });
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/projects/p1",
+      payload: { sandbox_level: "edit-with-confirm" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.ok).toBe(true);
+    expect(body.data.project.id).toBe("p1");
+    expect(body.data.project.sandbox_level).toBe("edit-with-confirm");
+    expect(supervisor.callLog[0].envelopeType).toBe("project_sandbox_set");
+    expect(supervisor.callLog[0].payload.project_id).toBe("p1");
+    expect(supervisor.callLog[0].payload.sandbox_level).toBe(
+      "edit-with-confirm",
+    );
+  });
+
+  test("PATCH /api/projects/:id body validation: invalid level → 400", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/projects/p1",
+      payload: { sandbox_level: "wild-west" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(supervisor.callLog).toHaveLength(0);
+  });
+
+  test("PATCH /api/projects/:id maps not_found → 404", async () => {
+    supervisor.nextResponses.push({
+      ok: false,
+      error: { code: "not_found", message: "no such project" },
+    });
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/projects/missing",
+      payload: { sandbox_level: "read-only" },
+    });
+    expect(res.statusCode).toBe(404);
+  });
 });
 
 // ---------- features routes ----------
