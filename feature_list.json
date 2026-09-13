@@ -1340,13 +1340,21 @@
         "Pass the full feature_list (id + title + description of each) to the LLM as context per D-029",
         "Test: send 'add OAuth login' with an empty feature list; assert 1-2 draft cards returned with realistic steps"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-044",
         "feat-010"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-045",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1622,8 +1630,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 42,
-    "failing": 12,
+    "passing": 43,
+    "failing": 11,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

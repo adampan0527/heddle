@@ -153,19 +153,26 @@ class TestIntentWiring(unittest.IsolatedAsyncioTestCase):
     async def test_imperative_verb_message_classified_as_work(self) -> None:
         data = await self._dialog("add OAuth login", req_id="w1")
         self.assertEqual(data["intent"], "work")
-        # v0.1 placeholder: feat-045 lands the real draft cards; for
-        # now the response is still kind=chat but intent=work so the
-        # Web UI can render "queued for decomposition" without
-        # lighting up the draft tray.
-        self.assertEqual(data["kind"], "chat")
+        # feat-045: work-classified messages now return kind="work"
+        # with a drafts: [...] payload (the Web UI's draft tray
+        # lights up — feat-040). Under HEDDLE_FAKE_LLM=1 the
+        # decomposer returns at least one draft card.
+        self.assertEqual(data["kind"], "work")
         self.assertNotEqual(data["text"], "")
         # Chat text is NOT used for work messages.
         self.assertNotIn("add or change", data["text"])
+        # feat-045: drafts array is present (length 1+ in fake mode;
+        # in real mode the test runs without HEDDLE_FAKE_LLM so we
+        # only assert the field exists).
+        self.assertIn("drafts", data)
+        self.assertIsInstance(data["drafts"], list)
 
     async def test_feat_mention_message_classified_as_work(self) -> None:
         data = await self._dialog("see feat-007 for context", req_id="w2")
         self.assertEqual(data["intent"], "work")
-        self.assertEqual(data["kind"], "chat")
+        # feat-045: kind="work" with drafts.
+        self.assertEqual(data["kind"], "work")
+        self.assertIn("drafts", data)
 
     async def test_at_mention_message_classified_as_work(self) -> None:
         data = await self._dialog("@feat-007 diagnose", req_id="w3")

@@ -77,6 +77,7 @@ from heddle_common.project_cascade import (
     remove_project_with_cascade,
 )
 
+from .decompose import DecomposeError, propose_drafts
 from .intent import classify_intent
 from .llm import LLMConfigError
 from .server import JsonEnvelope, build_envelope
@@ -130,13 +131,13 @@ _CHAT_REPLY_TEXT: str = (
     "Got it. I'm here to help — what would you like to add or change?"
 )
 
-# feat-044 placeholder: a work-classified message gets this short
-# text for v0.1 because feat-045 (LLM-driven decomposition) is not
-# wired yet. The intent field in the response is what the Web UI
-# inspects; the text is a courtesy so the dialog transcript is not
-# silent. feat-045 will replace this with a draft-cards payload.
-_WORK_PLACEHOLDER_TEXT: str = (
-    "I'm classifying this as work — decomposition arrives in feat-045."
+# feat-045: work-classified messages now produce draft cards; this
+# text is the courtesy line that accompanies the draft tray so the
+# dialog transcript is not silent. feat-040's draft tray carries the
+# actual content (title / description / steps).
+_WORK_DECOMPOSE_TEXT: str = (
+    "Here's what I propose — review the drafts and confirm to add "
+    "them to the feature list."
 )
 
 
@@ -461,31 +462,30 @@ class RouteHandler:
         }
 
     async def _dialog_turn(self, extras: dict[str, Any]) -> dict[str, Any]:
-        """feat-044: classify the user message as ``chat`` or ``work``.
+        """feat-044: classify + feat-045: decompose.
 
-        Behavior (D-017):
+        Behavior (D-017, D-002, D-006, D-008, D-029):
 
           * ``chat`` — return a short friendly text reply WITHOUT
             entering the draft-card flow. The Web UI renders the
             reply in the dialog transcript and the draft tray (feat-040)
             never lights up.
-          * ``work`` — for v0.1 we return the same ``chat`` shape
-            (no draft cards yet) so feat-040's tray stays dark.
-            feat-045 will replace this branch with the LLM-driven
-            decomposition that produces real draft cards.
+          * ``work`` — call ``propose_drafts(message, feature_list)``
+            (feat-045) to produce 1-3 draft cards. The response
+            carries ``kind: "work"`` and a ``drafts: [...]`` array;
+            the Web UI's draft tray (feat-040) renders the cards.
 
-        v0.1 classification is a heuristic (no LLM call); see
-        ``heddle_daemon.intent`` for the full rule. The handler
-        validates the message envelope + project_id, classifies,
-        and returns ``{project_id, kind, text}`` regardless of
-        intent — keeping the wire shape symmetric so feat-045 can
-        extend the ``work`` branch without breaking the chat one.
+        Classification is a heuristic (no LLM call) in v0.1 — see
+        ``heddle_daemon.intent``. Decomposition is fixture-driven
+        under ``HEDDLE_FAKE_LLM=1`` (tests / CI) and returns a
+        single placeholder card otherwise; the real LLM-driven path
+        lands in feat-046.
 
-        Async (not sync) because the handler emits a
-        ``dialog_done`` event after constructing its reply —
-        feat-030 wires the event_emitter so future streamed-token
-        handlers can sit between the LLM call and the terminal
-        response without a shape change.
+        Async (not sync) because the handler emits a ``dialog_done``
+        event after constructing its reply — feat-030 wires the
+        event_emitter so future streamed-token handlers can sit
+        between the LLM call and the terminal response without a
+        shape change.
         """
         project_id = extras.get("project_id")
         message = extras.get("message")
@@ -499,27 +499,55 @@ class RouteHandler:
                 f"{MAX_DIALOG_MESSAGE_CHARS}",
                 code="invalid_input",
             )
-        # Validate the project exists; we don't read feature_list here
-        # (feat-045 needs the full feature-list context for LLM-driven
-        # decomposition, and that's a downstream feature). The lookup
-        # ensures a typo'd project_id gets a 404 instead of a friendly
-        # reply for a project the user does not own.
-        self._lookup_project(project_id)
+        # Validate the project exists; we need the project to look
+        # up its ``feature_list.json`` for the decomposition context
+        # (D-029). The lookup ensures a typo'd project_id gets a
+        # 404 instead of draft cards the user does not own.
+        project = self._lookup_project(project_id)
         intent = classify_intent(message)
         if intent == "work":
-            # feat-045 placeholder: the real LLM-driven decomposition
-            # lands here. For v0.1 we still return kind="chat" so the
-            # wire shape stays symmetric (feat-040's draft tray stays
-            # dark until feat-045 wires draft cards).
-            text = _WORK_PLACEHOLDER_TEXT
+            # feat-045: load the project's feature_list to feed the
+            # decomposer. ``_safe_fail_call`` converts ``load``'s
+            # ``SystemExit`` into a RoutesError so the dialog reply
+            # stays in our envelope shape.
+            path = self.feature_list_path_for(project)
+            data = _safe_fail_call(lambda: _fl_load(path))
+            existing_features = list(data.get("features", []))
+            try:
+                drafts = propose_drafts(
+                    message,
+                    existing_features,
+                    fixture_root=self.fixture_root,
+                )
+            except DecomposeError as exc:
+                # Malformed fixture (T-031 contract: a missing /
+                # broken fake fixture is a test bug, not a silent
+                # fall-through). Map to internal_error so the
+                # Web UI surfaces something actionable instead of
+                # silently lighting up the draft tray.
+                _logging.error(
+                    component="routes",
+                    event="decompose_error",
+                    msg=f"propose_drafts refused: {exc}",
+                    project_id=project_id,
+                )
+                raise RoutesError(
+                    f"decompose failed: {exc}", code="internal_error"
+                ) from exc
+            text = _WORK_DECOMPOSE_TEXT
+            response_kind = "work"
+            payload_drafts = [d.to_dict() for d in drafts]
         else:
             text = _CHAT_REPLY_TEXT
+            response_kind = "chat"
+            payload_drafts = []
         _logging.info(
             component="routes",
             event="dialog_intent_classified",
             msg=f"dialog_turn classified as {intent!r}",
             project_id=project_id,
             intent=intent,
+            draft_count=len(payload_drafts),
         )
         # feat-030: emit a dialog_done marker so the Node.js side
         # sees the symmetric (token... done) shape even for the
@@ -533,9 +561,10 @@ class RouteHandler:
         )
         return {
             "project_id": project_id,
-            "kind": "chat",
+            "kind": response_kind,
             "intent": intent,
             "text": text,
+            "drafts": payload_drafts,
         }
 
     # ----- feat-030 per-feature command handlers -----

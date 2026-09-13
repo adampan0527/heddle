@@ -334,7 +334,7 @@ class TestFeatureHandlers(unittest.IsolatedAsyncioTestCase):
 
 
 class TestDialogStub(unittest.IsolatedAsyncioTestCase):
-    """dialog_turn routes through feat-044's intent classifier."""
+    """dialog_turn routes through feat-044's intent classifier + feat-045's decomposer."""
 
     async def asyncSetUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -343,6 +343,10 @@ class TestDialogStub(unittest.IsolatedAsyncioTestCase):
         self.projects_path = self.tmpdir / "projects.json"
         self.project_dir = self.tmpdir / "proj-d"
         self.project_dir.mkdir()
+        # feat-045: work-classified messages now load the project's
+        # feature_list.json for the decomposition context (D-029);
+        # an empty-but-valid file is enough for the smoke test.
+        _make_feature_list(self.project_dir, [])
 
         self.daemon = Daemon(DaemonConfig(port=0))
         self.daemon.enable_routes()
@@ -379,9 +383,11 @@ class TestDialogStub(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(data["text"].startswith("echo: "))
 
     async def test_dialog_turn_work_classifies_as_work(self) -> None:
-        """``add OAuth login`` classifies as work; v0.1 still returns
-        ``kind: "chat"`` with the work-placeholder text because
-        feat-045 (LLM-driven decomposition) has not landed yet.
+        """``add OAuth login`` classifies as work; feat-045 now
+        returns ``kind: "work"`` with a ``drafts: [...]`` array
+        (under HEDDLE_FAKE_LLM=1 a single hash-derived fallback
+        draft is returned because the test does not ship a
+        ``decompose.json`` fixture).
         """
         env = build_envelope(
             "dialog_turn",
@@ -393,8 +399,13 @@ class TestDialogStub(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(resp.extra.get("ok"), resp.extra)
         data = resp.extra["data"]
         self.assertEqual(data["intent"], "work")
-        # v0.1 placeholder: no draft cards yet.
-        self.assertEqual(data["kind"], "chat")
+        # feat-045: kind="work" + non-empty drafts list.
+        self.assertEqual(data["kind"], "work")
+        self.assertIn("drafts", data)
+        self.assertGreaterEqual(len(data["drafts"]), 1)
+        # Every draft has the v0.1 schema (id starts with "temp-").
+        for d in data["drafts"]:
+            self.assertTrue(d["id"].startswith("temp-"))
 
     async def test_dialog_turn_empty_message_rejected(self) -> None:
         env = build_envelope(
