@@ -1212,12 +1212,20 @@
         "On viewport < 1280px: DAG view promotes to fullscreen overlay (no side panel)",
         "Test: open DAG view; click a blocked feature; assert its ancestors + descendants are highlighted"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-035"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-041",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1590,8 +1598,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 38,
-    "failing": 16,
+    "passing": 39,
+    "failing": 15,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

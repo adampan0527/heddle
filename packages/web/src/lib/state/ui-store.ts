@@ -40,6 +40,17 @@ export interface UiState {
   toggleDraft: (id: string) => void;
   /** Drop the tray entirely (Cancel or post-confirm). */
   clearDrafts: () => void;
+  /**
+   * Whether the right-side DAG view panel is open. feat-041. Persisted
+   * across reloads via `partialize` so the user's preference survives
+   * a hot reload or accidental tab close. Ephemeral-only would also be
+   * defensible (the toggle is one click away) but persistence matches
+   * the existing `activeProjectId` pattern and is friendlier when the
+   * user navigates between projects and back.
+   */
+  dagViewOpen: boolean;
+  setDagViewOpen: (open: boolean) => void;
+  toggleDagView: () => void;
 }
 
 /**
@@ -55,7 +66,7 @@ function emptySelected(): string[] {
 
 export const useUiStore = create<UiState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       activeProjectId: null,
       setActiveProjectId: (id) => set({ activeProjectId: id }),
       drafts: emptyDrafts(),
@@ -86,6 +97,10 @@ export const useUiStore = create<UiState>()(
           };
         }),
       clearDrafts: () => set({ drafts: emptyDrafts(), selectedIds: emptySelected() }),
+      // feat-041: DAG view toggle state.
+      dagViewOpen: false,
+      setDagViewOpen: (open) => set({ dagViewOpen: open }),
+      toggleDagView: () => set({ dagViewOpen: !get().dagViewOpen }),
     }),
     {
       name: "heddle.ui.state",
@@ -94,6 +109,7 @@ export const useUiStore = create<UiState>()(
         activeProjectId: state.activeProjectId,
         drafts: state.drafts,
         selectedIds: state.selectedIds,
+        dagViewOpen: state.dagViewOpen,
       }),
       version: 1,
     },

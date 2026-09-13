@@ -14,6 +14,7 @@
 import { useEffect } from "react";
 
 import { ConnectionStatus } from "./components/ConnectionStatus.tsx";
+import { DagView } from "./components/DagView.tsx";
 import { Dialog } from "./components/Dialog.tsx";
 import { DraftTray } from "./components/DraftTray.tsx";
 import { Kanban } from "./components/Kanban.tsx";
@@ -23,6 +24,8 @@ import { useUiStore } from "./lib/state/ui-store.ts";
 
 export default function App(): React.ReactElement {
   const activeProjectId = useUiStore((s) => s.activeProjectId);
+  const dagViewOpen = useUiStore((s) => s.dagViewOpen);
+  const setDagViewOpen = useUiStore((s) => s.setDagViewOpen);
   useEffect(() => {
     const ws = getDefaultWsClient();
     ws.connect();
@@ -46,6 +49,15 @@ export default function App(): React.ReactElement {
         <Kanban projectId={activeProjectId} />
         <Dialog projectId={activeProjectId} />
       </main>
+
+      {/* feat-041: right-side DAG panel. Closed by default; toggled
+          from the Kanban header. */}
+      {dagViewOpen ? (
+        <DagView
+          projectId={activeProjectId}
+          onClose={() => setDagViewOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

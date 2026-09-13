@@ -60,6 +60,7 @@ import {
   type KanbanColumnId,
   type KanbanLaneId,
 } from "../lib/state/kanban-store.ts";
+import { useUiStore } from "../lib/state/ui-store.ts";
 import { toastError } from "../lib/toast.ts";
 import { KanbanCard } from "./KanbanCard.tsx";
 import { KanbanColumn } from "./KanbanColumn.tsx";
@@ -164,6 +165,9 @@ export function Kanban({ projectId }: KanbanProps): React.ReactElement {
   const setDragging = useKanbanStore((s) => s.setDragging);
   const setHover = useKanbanStore((s) => s.setHover);
   const reset = useKanbanStore((s) => s.reset);
+  // feat-041: DAG view toggle state.
+  const dagViewOpen = useUiStore((s) => s.dagViewOpen);
+  const toggleDagView = useUiStore((s) => s.toggleDagView);
 
   // Require a small movement (~4px) before starting a drag so clicks
   // on a card still register as clicks (not as drag starts).
@@ -250,32 +254,53 @@ export function Kanban({ projectId }: KanbanProps): React.ReactElement {
       onDragEnd={onDragEnd}
       onDragCancel={onDragCancel}
     >
-      <div
-        className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-3"
-        aria-label="Kanban board"
-      >
-        {COLUMNS.map((c) => {
-          const cards = byColumn.get(c.id) ?? [];
-          return (
-            <KanbanColumn
-              key={c.id}
-              id={c.id}
-              title={c.title}
-              count={cards.length}
-              accent={c.accent}
-            >
-              {cards.length === 0 ? (
-                <li className="rounded border border-dashed border-zinc-700 p-4 text-center text-xs text-zinc-500">
-                  No features
-                </li>
-              ) : (
-                cards.map((f) => <KanbanCard key={f.id} feature={f} />)
-              )}
-            </KanbanColumn>
-          );
-        })}
+      <div className="flex flex-1 flex-col gap-4" aria-label="Kanban board wrapper">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
+            Kanban
+          </h2>
+          <button
+            type="button"
+            data-kanban-dag-toggle
+            aria-label={dagViewOpen ? "Close DAG view" : "Open DAG view"}
+            aria-pressed={dagViewOpen}
+            onClick={toggleDagView}
+            className={`rounded border px-2 py-1 text-xs ${
+              dagViewOpen
+                ? "border-blue-500 bg-blue-950 text-blue-200"
+                : "border-zinc-700 hover:bg-zinc-800"
+            }`}
+          >
+            {dagViewOpen ? "Hide DAG" : "Show DAG"}
+          </button>
+        </div>
+        <div
+          className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-3"
+          aria-label="Kanban board"
+        >
+          {COLUMNS.map((c) => {
+            const cards = byColumn.get(c.id) ?? [];
+            return (
+              <KanbanColumn
+                key={c.id}
+                id={c.id}
+                title={c.title}
+                count={cards.length}
+                accent={c.accent}
+              >
+                {cards.length === 0 ? (
+                  <li className="rounded border border-dashed border-zinc-700 p-4 text-center text-xs text-zinc-500">
+                    No features
+                  </li>
+                ) : (
+                  cards.map((f) => <KanbanCard key={f.id} feature={f} />)
+                )}
+              </KanbanColumn>
+            );
+          })}
+        </div>
+        <KanbanLaneRow features={list} />
       </div>
-      <KanbanLaneRow features={list} />
     </DndContext>
   );
 }
