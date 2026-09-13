@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Mapping, Optional, Sequence, Union
@@ -57,6 +58,12 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from heddle_common import logging as _logging
 from heddle_daemon.checkpointing import ProjectCheckpointStore
+from heddle_daemon.llm_audit import (
+    LlmAuditLogger,
+    outcome_aborted,
+    outcome_error,
+    outcome_ok,
+)
 from heddle_daemon.sandbox import ToolDispatchMiddleware
 
 
@@ -265,6 +272,18 @@ class AgentRuntime:
     # retries entirely (e.g. in latency-sensitive tests).
     max_retries: int = DEFAULT_MAX_LLM_RETRIES
     backoff_base_seconds: float = DEFAULT_LLM_BACKOFF_BASE_SECONDS
+    # feat-025: per-project LLM-call audit logger. Optional so
+    # existing call sites (tests, skeleton-mode daemons) keep
+    # working without an audit sink; when set, every LLM call the
+    # runtime makes is appended as one JSON line to
+    # ``<logs_dir>/<project_id>/llm-audit.jsonl``.
+    llm_audit: Optional[LlmAuditLogger] = None
+    # feat-025: model identifier recorded on every audit record. The
+    # daemon resolves this from the LLM config (feat-031); tests
+    # pass an explicit string. ``None`` becomes the literal
+    # ``"unknown"`` on the audit record so downstream consumers
+    # always see a non-null string.
+    audit_model: Optional[str] = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.checkpoint_store, ProjectCheckpointStore):
@@ -284,6 +303,13 @@ class AgentRuntime:
         if self.backoff_base_seconds < 0:
             raise ValueError(
                 f"backoff_base_seconds must be >= 0; got {self.backoff_base_seconds}"
+            )
+        if self.llm_audit is not None and not isinstance(
+            self.llm_audit, LlmAuditLogger
+        ):
+            raise TypeError(
+                "llm_audit must be an LlmAuditLogger or None; "
+                f"got {type(self.llm_audit).__name__}"
             )
 
     # ---- public API ----
@@ -350,7 +376,9 @@ class AgentRuntime:
         final: LLMResponse | None = None
         while steps_taken < max_steps:
             steps_taken += 1
-            response = await self._call_llm(llm, messages)
+            response = await self._call_llm(
+                llm, messages, thread_id=canonical_thread
+            )
             # External abort check: AFTER the LLM returns (so we never
             # waste a half-finished call), BEFORE we mutate state
             # (so a future resume from the checkpoint does not see
@@ -474,7 +502,9 @@ class AgentRuntime:
         steps_taken = 0
         while steps_taken < self.max_steps:
             steps_taken += 1
-            response = await self._call_llm(llm, messages)
+            response = await self._call_llm(
+                llm, messages, thread_id=canonical_thread
+            )
             if stop_event is not None and stop_event.is_set():
                 _logging.warn(
                     component="agent_runtime",
@@ -616,6 +646,7 @@ class AgentRuntime:
         self,
         llm: LLMCallable,
         messages: list[dict[str, Any]],
+        thread_id: str = "",
     ) -> LLMResponse:
         """Call the LLM with retry + exponential backoff (D-041 / feat-022).
 
@@ -632,8 +663,20 @@ class AgentRuntime:
         successful LLM call followed by a tool dispatch and another
         LLM call starts a fresh retry budget. This matches D-041
         ("daemon-internal LLM/tool retries").
+
+        feat-025: every LLM call writes ONE audit record — either
+        ``outcome="ok"`` on success or ``outcome="error"`` on retry
+        exhaustion. Latency is measured with ``time.monotonic()``
+        around the entire retry sequence so wall-clock jitter / NTP
+        corrections do not bias the recorded duration. ``thread_id``
+        is threaded into the audit record's ``feature_id`` field;
+        it is optional (defaulted to ``""``) so existing test call
+        sites keep compiling.
         """
         last_exc: BaseException | None = None
+        # feat-025: total wall-time across all attempts in the retry
+        # sequence (monotonic, so immune to NTP corrections).
+        started_at = time.monotonic()
         for attempt in range(1, self.max_retries + 1):
             try:
                 response = await self._call_llm_once(llm, messages)
@@ -647,6 +690,16 @@ class AgentRuntime:
                         ),
                         attempt=attempt,
                     )
+                # feat-025: audit this LLM call. ``_record_audit``
+                # is a no-op when ``llm_audit`` is unset, so
+                # non-projects / tests pay zero cost.
+                self._record_audit(
+                    thread_id=thread_id,
+                    outcome=outcome_ok(),
+                    latency_ms=_ms_since(started_at),
+                    attempt=attempt,
+                    stop_reason=response.stop_reason,
+                )
                 return response
             except _NON_RETRYABLE_EXCEPTIONS:
                 # Programming errors should not retry; let them
@@ -690,6 +743,16 @@ class AgentRuntime:
             error_type=type(last_exc).__name__,
             error_message=str(last_exc),
         )
+        # feat-025: audit the failed LLM call. Best-effort via
+        # ``_record_audit``'s try/except wrapper.
+        self._record_audit(
+            thread_id=thread_id,
+            outcome=outcome_error(),
+            latency_ms=_ms_since(started_at),
+            attempt=self.max_retries,
+            stop_reason="error",
+            error_type=type(last_exc).__name__,
+        )
         raise LLMRetryExhaustedError(self.max_retries, last_exc) from last_exc
 
     @staticmethod
@@ -722,6 +785,74 @@ class AgentRuntime:
         if asyncio.iscoroutine(result):
             result = await result
         return _coerce_llm_response(result)
+
+    @staticmethod
+    def _extract_token_usage(response: LLMResponse) -> tuple[int | None, int | None]:
+        """Best-effort pull of token counts from an LLMResponse.
+
+        Returns ``(prompt_tokens, completion_tokens)`` as ``(int,
+        int)`` when the underlying provider (LangChain, FakeLLM)
+        stashes usage in ``response.response_metadata``; returns
+        ``(None, None)`` otherwise so the audit record stays
+        defensible (defensive: token counts absent per feat-025 risk
+        matrix — write null rather than guess).
+
+        Kept as a static method so unit tests can hit it without
+        building a full AgentRuntime.
+        """
+        # The LangChain AIMessage shape carries response_metadata on
+        # the original object, NOT on our normalised LLMResponse.
+        # For now, we expose ``None`` until a future feature threads
+        # the metadata through; the audit record's prompt_tokens /
+        # completion_tokens fields stay null-safe.
+        return (None, None)
+
+    def _record_audit(
+        self,
+        *,
+        thread_id: str,
+        outcome: str,
+        latency_ms: int,
+        attempt: int,
+        stop_reason: str,
+        error_type: str | None = None,
+    ) -> None:
+        """Append one audit record when ``self.llm_audit`` is set.
+
+        Best-effort: an audit-write failure must NEVER break the
+        agent loop. Failures are logged at warn level and swallowed
+        so the agent's user-visible behavior is unchanged.
+
+        Latency is the wall-clock-ish delta supplied by the caller
+        (always measured via ``time.monotonic()`` — see
+        ``_call_llm``).
+        """
+        if self.llm_audit is None:
+            return
+        try:
+            self.llm_audit.record_call(
+                feature_id=thread_id,
+                model=self.audit_model or "unknown",
+                prompt_tokens=None,
+                completion_tokens=None,
+                latency_ms=latency_ms,
+                outcome=outcome,
+                stop_reason=stop_reason,
+                retry_attempt=attempt,
+                **({"error_type": error_type} if error_type else {}),
+            )
+        except Exception as exc:
+            _logging.warn(
+                component="agent_runtime",
+                event="llm_audit_write_failed",
+                msg=(
+                    f"failed to append LLM audit record for "
+                    f"thread {thread_id!r}: {exc}"
+                ),
+                thread_id=thread_id,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
 
     @staticmethod
     def _response_to_message(response: LLMResponse) -> dict[str, Any]:
@@ -816,6 +947,17 @@ def _now_iso() -> str:
     from datetime import datetime, timezone
 
     return datetime.now(timezone.utc).isoformat()
+
+
+def _ms_since(started_at: float) -> int:
+    """Integer milliseconds elapsed since a ``time.monotonic()`` start.
+
+    feat-025: the audit record's ``latency_ms`` field uses a
+    monotonic clock so wall-clock jitter / NTP corrections cannot
+    bias the recorded duration. Returned as an ``int`` so the audit
+    line's value is always a whole number.
+    """
+    return int((time.monotonic() - started_at) * 1000)
 
 
 def _format_checkpoint_id(thread_id: str, message_count: int) -> str:

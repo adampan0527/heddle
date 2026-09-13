@@ -67,6 +67,7 @@ from heddle_daemon.checkpointing import (
     ProjectCheckpointStore,
     is_checkpoint_db_healthy,
 )
+from heddle_daemon.llm_audit import LlmAuditLogger, resolve_logs_dir
 from heddle_daemon.restart_budget import (
     RestartBudgetConfig,
     RestartBudgetCounter,
@@ -114,6 +115,11 @@ ENV_RECURSION_LIMIT: Final[str] = "HEDDLE_RECURSION_LIMIT"
 # already having filesystem access.
 ENV_CONFIGS_PATH: Final[str] = "HEDDLE_CONFIGS_PATH"
 ENV_FAKE_LLM_FIXTURE_ROOT: Final[str] = "HEDDLE_FAKE_LLM_FIXTURE_ROOT"
+# feat-025: env var for the per-project logs root. Used by the
+# audit-log sidecar and the rotating ``<project_id>.daemon.log``
+# (feat-015). Loopback-only knob (loopback WS is the daemon's only
+# ingress, see _is_loopback).
+ENV_LOGS_DIR: Final[str] = "HEDDLE_LOGS_DIR"
 
 # feat-031: defaults per T-023 / feat-007. The configs file lives at
 # ``~/.heddle/configs.yaml``; the fake-LLM fixture root is a parallel
@@ -169,6 +175,12 @@ class DaemonConfig:
     # location" (``~/.heddle/fake_fixtures``); tests pass an explicit
     # Path.
     fixture_root: Path | None = None
+    # feat-025: root directory for per-project logs. The rotating
+    # ``<project_id>.daemon.log`` (feat-015) and the audit log
+    # ``<project_id>/llm-audit.jsonl`` both live under this root.
+    # ``None`` means "use the env-var-aware default"
+    # (``~/.heddle/logs``); tests pass an explicit Path.
+    logs_dir: Path | None = None
 
     def __post_init__(self) -> None:
         # Validate eagerly so the constructor is the single chokepoint
@@ -211,7 +223,9 @@ class DaemonConfig:
         # only relevant when HEDDLE_FAKE_LLM is set, which the daemon
         # validates at LLM-build time. We accept None to mean
         # "default location"; the consumer resolves the default lazily.
-        for field_name in ("configs_path", "fixture_root"):
+        # feat-025: same shape for logs_dir (audit log + rotating log
+        # both live under this root).
+        for field_name in ("configs_path", "fixture_root", "logs_dir"):
             value = getattr(self, field_name)
             if value is None:
                 continue
@@ -249,7 +263,8 @@ def _is_loopback(host: str) -> bool:
 
 def config_from_env(env: dict[str, str] | None = None) -> DaemonConfig:
     """Read HEDDLE_DAEMON_PORT / HEDDLE_DAEMON_HOST / HEDDLE_DAEMON_PROJECT_PATH
-    / HEDDLE_RECURSION_LIMIT / HEDDLE_CONFIGS_PATH / HEDDLE_FAKE_LLM_FIXTURE_ROOT.
+    / HEDDLE_RECURSION_LIMIT / HEDDLE_CONFIGS_PATH /
+    HEDDLE_FAKE_LLM_FIXTURE_ROOT / HEDDLE_LOGS_DIR.
 
     `env` defaults to `os.environ`; tests pass an explicit dict to
     avoid mutating the real environment.
@@ -277,6 +292,11 @@ def config_from_env(env: dict[str, str] | None = None) -> DaemonConfig:
     configs_path: Path | None = Path(configs_raw) if configs_raw else None
     fixture_raw = src.get(ENV_FAKE_LLM_FIXTURE_ROOT)
     fixture_root: Path | None = Path(fixture_raw) if fixture_raw else None
+    # feat-025: HEDDLE_LOGS_DIR follows the same pattern. When unset
+    # the daemon resolves ``~/.heddle/logs`` lazily via
+    # ``resolve_logs_dir`` inside ``start()``.
+    logs_raw = src.get(ENV_LOGS_DIR)
+    logs_dir: Path | None = Path(logs_raw) if logs_raw else None
     return DaemonConfig(
         host=host_raw,
         port=port,
@@ -284,6 +304,7 @@ def config_from_env(env: dict[str, str] | None = None) -> DaemonConfig:
         recursion_limit=recursion_limit,
         configs_path=configs_path,
         fixture_root=fixture_root,
+        logs_dir=logs_dir,
     )
 
 
@@ -481,6 +502,14 @@ class Daemon:
         # counter is in-memory only — a daemon restart wipes it. v0.2
         # is expected to persist the counter alongside the project.
         self._restart_counters: dict[str, RestartBudgetCounter] = {}
+        # feat-025: per-project LLM-call audit logger. Created in
+        # ``start()`` when ``config.project_path`` resolves to a
+        # registered project; ``None`` for skeleton / project-less
+        # runs. Always closed in ``stop()`` and in
+        # ``_on_project_removed`` so a stale file handle cannot
+        # survive a project switch (same lifetime contract as
+        # ``_log_sink``).
+        self._llm_audit: LlmAuditLogger | None = None
 
     @property
     def config(self) -> DaemonConfig:
@@ -601,6 +630,11 @@ class Daemon:
         # daemon (no registered project yet) can still serve.
         self._attach_log_sink()
 
+        # feat-025: attach a per-project LLM-call audit logger.
+        # Mirrors the rotation sink's graceful fallback: missing /
+        # unmatched project → warn event + continue, no abort.
+        self._attach_llm_audit()
+
         self._server = await serve(
             self._handle_connection,
             self._config.host,
@@ -622,6 +656,10 @@ class Daemon:
         # is also captured on disk. Best-effort: a sink close failure
         # does not prevent the rest of the teardown from running.
         self._close_log_sink()
+        # feat-025: close the per-project LLM audit logger. Same
+        # best-effort contract as the rotating sink — close failure
+        # does not block teardown.
+        self._close_llm_audit()
         if self._server is not None:
             self._server.close()
             try:
@@ -707,6 +745,9 @@ class Daemon:
         # project-switch re-attach when the registry becomes a real
         # multi-project rotation primitive.
         self._close_log_sink()
+        # feat-025: close the per-project LLM audit logger with the
+        # same lifetime contract as the rotating sink.
+        self._close_llm_audit()
         # 1. Signal every in-flight thread. Asyncio's ``Event.set()``
         # is idempotent and thread-safe so calling it repeatedly (or
         # on an already-set event) is harmless.
@@ -872,6 +913,126 @@ class Daemon:
                     error_message=str(exc),
                 )
             self._log_sink = None
+
+    # ---------- feat-025: LLM audit logger ----------
+
+    def _attach_llm_audit(self) -> None:
+        """Attach a per-project LLM-call audit logger (feat-025).
+
+        Mirrors the resolution logic of :meth:`_attach_log_sink`:
+        matches ``config.project_path`` against registered projects
+        (D-057); on match, builds an :class:`LlmAuditLogger` writing
+        to ``<logs_dir>/<project_id>/llm-audit.jsonl``. On any
+        resolution / IO failure (project_path unset, projects.json
+        unreadable, no matching project, FS error creating the audit
+        directory), emits a structured ``llm_audit_skipped`` warn
+        event and returns so the daemon keeps serving — same
+        graceful-fallback contract as feat-015.
+
+        v0.1 is single-project-at-a-time so this is called once
+        per ``start()``.
+        """
+        if self._config.project_path is None:
+            _logging.warn(
+                component="daemon",
+                event="llm_audit_skipped",
+                msg=(
+                    "no project_path configured; daemon serves without a "
+                    "per-project LLM audit log (skeleton mode)"
+                ),
+                reason="project_path_unset",
+            )
+            return
+        try:
+            registered = list_projects()
+        except Exception as exc:
+            _logging.warn(
+                component="daemon",
+                event="llm_audit_skipped",
+                msg=f"cannot read projects registry: {exc}",
+                reason="projects_read_failed",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+            return
+        target = self._config.project_path
+        for proj in registered:
+            try:
+                if Path(proj.path).resolve() == target:
+                    # feat-015 mirror: prefer the configured logs_dir
+                    # (passed in via DaemonConfig / HEDDLE_LOGS_DIR),
+                    # else fall back to the module-level
+                    # ``DEFAULT_LOGS_DIR`` constant. Tests patch the
+                    # constant to point at a temp dir; the env-var
+                    # path is taken when ``DaemonConfig.logs_dir``
+                    # was set explicitly.
+                    if self._config.logs_dir is not None:
+                        logs_dir = self._config.logs_dir
+                    else:
+                        logs_dir = Path(DEFAULT_LOGS_DIR).expanduser()
+                    try:
+                        self._llm_audit = LlmAuditLogger(
+                            logs_dir=logs_dir, project_id=proj.id
+                        )
+                    except Exception as exc:
+                        # FS failure (e.g. read-only home dir).
+                        # Log + continue without the audit logger
+                        # rather than refuse to start.
+                        _logging.warn(
+                            component="daemon",
+                            event="llm_audit_skipped",
+                            msg=(
+                                f"cannot attach LLM audit logger at "
+                                f"{logs_dir / proj.id}: {exc}"
+                            ),
+                            reason="audit_attach_failed",
+                            project_id=proj.id,
+                            logs_dir=str(logs_dir),
+                            error_type=type(exc).__name__,
+                            error_message=str(exc),
+                        )
+                        return
+                    _logging.info(
+                        component="daemon",
+                        event="llm_audit_attached",
+                        msg=(
+                            f"LLM audit logger attached at "
+                            f"{self._llm_audit.audit_path}"
+                        ),
+                        project_id=proj.id,
+                        logs_dir=str(logs_dir),
+                        audit_path=str(self._llm_audit.audit_path),
+                    )
+                    return
+            except OSError:
+                continue
+        _logging.warn(
+            component="daemon",
+            event="llm_audit_skipped",
+            msg=(
+                f"no registered project matches project_path={target}; "
+                "daemon serves without a per-project LLM audit log"
+            ),
+            reason="no_matching_project",
+            project_path=str(target),
+        )
+
+    def _close_llm_audit(self) -> None:
+        """Close the per-project audit logger. Idempotent."""
+        if self._llm_audit is None:
+            return
+        try:
+            self._llm_audit.close()
+        except Exception as exc:
+            _logging.warn(
+                component="daemon",
+                event="llm_audit_close_failed",
+                msg=f"LLM audit logger close raised: {exc}",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+        finally:
+            self._llm_audit = None
 
     # ---------- feat-024: restart recovery hook ----------
 

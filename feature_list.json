@@ -683,13 +683,21 @@
         "All log lines use feat-015 rotation",
         "Test: run a fake agent step; assert a line was written to llm-audit.jsonl with the right shape"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "medium",
       "depends_on": [
         "feat-005",
         "feat-015"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-025",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1558,8 +1566,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 34,
-    "failing": 20,
+    "passing": 35,
+    "failing": 19,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,
