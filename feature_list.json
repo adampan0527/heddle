@@ -1534,13 +1534,21 @@
         "Daemon uses watchfiles for Python code hot reload",
         "Test: run heddle dev; edit a React component; assert browser hot-reloads; edit a Python tool; assert daemon reloads"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-026",
         "feat-032"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-051",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1670,8 +1678,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 48,
-    "failing": 6,
+    "passing": 49,
+    "failing": 5,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

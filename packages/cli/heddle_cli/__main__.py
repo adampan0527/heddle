@@ -66,9 +66,53 @@ def start(
 
 
 @cli.command()
-def dev() -> None:
-    """Start dev mode (Vite + Fastify + daemon with hot reload). Not implemented in v0.1 stub."""
-    click.echo("heddle dev: not yet implemented (feat-051)")
+@click.option(
+    "--vite-port",
+    type=int,
+    default=None,
+    help="Vite dev server port (default 5173).",
+)
+@click.option(
+    "--node-port",
+    type=int,
+    default=None,
+    help="Node.js backend port (default 5174).",
+)
+@click.option(
+    "--no-browser",
+    is_flag=True,
+    default=False,
+    help="Do not open the default browser when the dev server is ready.",
+)
+def dev(
+    vite_port: int | None,
+    node_port: int | None,
+    no_browser: bool,
+) -> None:
+    """Start dev mode (Vite + Fastify + daemon with hot reload).
+
+    Spawns three subprocesses in parallel — ``pnpm --filter web dev``
+    (Vite), ``pnpm --filter node dev`` (Fastify + tsx hot reload),
+    and ``python -m heddle_daemon`` (watchfiles-based Python reload)
+    — and streams each child's stdout/stderr with a ``[vite]`` /
+    ``[node]`` / ``[daemon]`` prefix. Vite proxies ``/api`` and
+    ``/ws`` to the Node.js backend on the loopback Node.js port;
+    the orchestrator refuses to start when the proxy config does
+    not point at the expected backend (feat-051 / T-019).
+    """
+    from .dev import dev_cmd
+    import webbrowser
+
+    argv: list[str] = []
+    if vite_port is not None:
+        argv += ["--vite-port", str(vite_port)]
+    if node_port is not None:
+        argv += ["--node-port", str(node_port)]
+
+    opener = None if no_browser else webbrowser.open
+    raise SystemExit(
+        dev_cmd(argv, browser_opener=opener, open_browser=not no_browser)
+    )
 
 
 @cli.command()
