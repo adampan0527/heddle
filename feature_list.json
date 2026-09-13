@@ -659,7 +659,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 19,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-024",
@@ -691,7 +691,7 @@
       ],
       "attempts": [
         {
-          "session": null,
+          "session": 19,
           "by": "coding-agent",
           "outcome": "passing",
           "note": "feat-025",
@@ -1115,13 +1115,21 @@
         "On draft cards: show a draft tray above the kanban with the cards (feat-040)",
         "Test: type a feature request; assert the dialog response appears; click 'Confirm all' and assert cards become features"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-028",
         "feat-035"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-038",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1566,8 +1574,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 35,
-    "failing": 19,
+    "passing": 36,
+    "failing": 18,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,
