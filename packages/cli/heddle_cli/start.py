@@ -100,9 +100,19 @@ def _spawn_node(
             f"node backend dist not found at {cfg.node_dist}; "
             f"run `pnpm --filter node build` first."
         )
+    # Inherit the parent environment so PATH / SYSTEMROOT / etc. are
+    # available — overriding env= with just our two keys makes Windows
+    # fail to locate `node.exe` on PATH and the subprocess can't start.
+    merged_env = {**os.environ, "HEDDLE_NODE_HOST": cfg.host, "HEDDLE_NODE_PORT": str(cfg.port)}
+    # Redirect stdout/stderr to DEVNULL on Windows because Node 24's
+    # ncrypto::CSPRNG assertion can fire on the inherited stdio handle
+    # when the parent process is a console-attached Python CLI. The
+    # backend writes its own structured JSON logs to stderr; we lose
+    # the live tail but the user's terminal is not spammed with
+    # one-line JSON-per-event when the kanban is open in the browser.
     return popen_factory(
         ["node", str(cfg.node_dist)],
-        env={"HEDDLE_NODE_HOST": cfg.host, "HEDDLE_NODE_PORT": str(cfg.port)},
+        env=merged_env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
