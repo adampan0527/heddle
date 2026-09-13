@@ -37,10 +37,12 @@ beyond import ``ProjectCheckpointStore`` here instead of constructing
 from __future__ import annotations
 
 import re
+import sqlite3
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import AsyncIterator, Final
+from typing import Final
 
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
@@ -49,6 +51,7 @@ __all__ = [
     "DEFAULT_DB_FILENAME",
     "FEATURE_ID_THREAD_PATTERN",
     "ProjectCheckpointStore",
+    "is_checkpoint_db_healthy",
     "project_checkpoint_path",
 ]
 
@@ -89,6 +92,62 @@ def project_checkpoint_path(project_path: Path | str, db_filename: str = DEFAULT
             f"refusing to create a checkpoint store against a non-existent project"
         )
     return p / CHECKPOINTS_DIR_NAME / db_filename
+
+
+def is_checkpoint_db_healthy(
+    project_path: Path | str,
+    db_filename: str = DEFAULT_DB_FILENAME,
+) -> bool:
+    """Return True iff the project's checkpoint DB is present AND SQLite-healthy.
+
+    feat-024 (D-051) — used by ``Daemon._on_respawn`` to detect a
+    "checkpoint loss" condition on daemon respawn. The function is
+    fail-closed: any error reading or validating the DB returns
+    False so the respawn path can mark the affected features as
+    blocked rather than silently proceeding with corrupt state.
+
+    Concretely:
+
+        * ``<project>/.heddle/<db_filename>`` must exist as a file
+          (a missing DB is "checkpoint loss").
+        * The DB must open without a SQLite exception.
+        * ``PRAGMA integrity_check`` must return exactly ``"ok"`` (a
+          single-row, single-column result). Anything else —
+          including any exception raised by the PRAGMA itself —
+          means the DB is corrupt and the caller should treat it
+          as lost.
+
+    The check is intentionally synchronous (``sqlite3``, not
+    ``aiosqlite``) so it can be called from anywhere without an
+    asyncio loop; the respawn path is short-lived and the DB is
+    tiny enough that a blocking read is fine.
+    """
+    try:
+        db_path = project_checkpoint_path(project_path, db_filename=db_filename)
+    except FileNotFoundError:
+        # The project_path itself does not exist or isn't a directory.
+        # Treat as "no DB to recover from" — same outcome as a missing
+        # checkpoints.db file.
+        return False
+    if not db_path.exists():
+        return False
+    try:
+        with sqlite3.connect(str(db_path)) as conn:
+            cur = conn.execute("PRAGMA integrity_check")
+            row = cur.fetchone()
+    except sqlite3.DatabaseError:
+        # Open failed, the file is not a SQLite DB, or the pragma
+        # raised. Fail-closed: any exception => unhealthy.
+        return False
+    if row is None:
+        return False
+    # PRAGMA integrity_check returns one row per issue; a healthy DB
+    # returns a single row whose first column is "ok". Multi-row
+    # results are corruption descriptions.
+    first = row[0]
+    if isinstance(first, bytes):
+        first = first.decode("utf-8", errors="replace")
+    return first == "ok"
 
 
 # ---------- store ----------
@@ -220,7 +279,7 @@ class ProjectCheckpointStore:
         self._setup_done = False
 
     @asynccontextmanager
-    async def open(self) -> AsyncIterator["ProjectCheckpointStore"]:
+    async def open(self) -> AsyncIterator[ProjectCheckpointStore]:
         """Context manager: ``setup()`` on enter, ``close()`` on exit.
 
         Equivalent to manually calling ``setup()`` / ``close()`` but

@@ -651,13 +651,21 @@
         "Test: simulate 3 daemon restarts within 10 minutes; assert the feature transitions to blocked with clear reason",
         "Test: simulate 2 restarts in 10 minutes, then a 3rd after 11 minutes; assert the 3rd does NOT transition to blocked (window has cleared)"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "medium",
       "depends_on": [
         "feat-018",
         "feat-029"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-024",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1550,8 +1558,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 33,
-    "failing": 21,
+    "passing": 34,
+    "failing": 20,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

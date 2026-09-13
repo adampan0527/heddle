@@ -49,21 +49,28 @@ import json
 import os
 import signal
 import sys
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import UTC
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Final, Optional
-
-import websockets
-from websockets.asyncio.server import ServerConnection, serve
+from typing import Any, Final
 
 from heddle_common import logging as _logging
 from heddle_common.log_rotation import RotatingFileSink
 from heddle_common.projects_io import Project, list_projects
+from websockets.asyncio.server import ServerConnection, serve
+
 from heddle_daemon.agent_runtime import (
-    RECURSION_LIMIT_ENV_VAR,
     get_max_steps_from_env,
 )
-from heddle_daemon.checkpointing import ProjectCheckpointStore
+from heddle_daemon.checkpointing import (
+    ProjectCheckpointStore,
+    is_checkpoint_db_healthy,
+)
+from heddle_daemon.restart_budget import (
+    RestartBudgetConfig,
+    RestartBudgetCounter,
+)
 
 __all__ = [
     "DEFAULT_HOST",
@@ -142,7 +149,7 @@ class DaemonConfig:
 
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
-    project_path: Optional[Path] = None
+    project_path: Path | None = None
     # Per-thread LLM-turn ceiling (D-052 / feat-022). Resolved from
     # HEDDLE_RECURSION_LIMIT at construction time via
     # ``get_recursion_limit_from_env``. Exposed on the daemon so
@@ -154,14 +161,14 @@ class DaemonConfig:
     # this file via ``heddle_daemon.llm_config``. ``None`` means "use
     # the default location" (``~/.heddle/configs.yaml``); tests pass
     # an explicit Path.
-    configs_path: Optional[Path] = None
+    configs_path: Path | None = None
     # feat-031: root directory holding per-feature fake-LLM fixtures
     # (feat-007). Used by ``RouteHandler._start_feature`` /
     # ``_retry_feature`` to locate ``<fixture_root>/<feature_id>.json``
     # under HEDDLE_FAKE_LLM=1. ``None`` means "use the default
     # location" (``~/.heddle/fake_fixtures``); tests pass an explicit
     # Path.
-    fixture_root: Optional[Path] = None
+    fixture_root: Path | None = None
 
     def __post_init__(self) -> None:
         # Validate eagerly so the constructor is the single chokepoint
@@ -257,7 +264,7 @@ def config_from_env(env: dict[str, str] | None = None) -> DaemonConfig:
             f"{ENV_PORT}={port_raw!r} is not an integer; fix the env var"
         ) from exc
     project_raw = src.get(ENV_PROJECT_PATH)
-    project_path: Optional[Path] = None
+    project_path: Path | None = None
     if project_raw:
         project_path = Path(project_raw)
     recursion_limit = get_recursion_limit_from_env(src)
@@ -267,9 +274,9 @@ def config_from_env(env: dict[str, str] | None = None) -> DaemonConfig:
     # treated as unset (a hand-set ``HEDDLE_CONFIGS_PATH=`` should not
     # disable the default).
     configs_raw = src.get(ENV_CONFIGS_PATH)
-    configs_path: Optional[Path] = Path(configs_raw) if configs_raw else None
+    configs_path: Path | None = Path(configs_raw) if configs_raw else None
     fixture_raw = src.get(ENV_FAKE_LLM_FIXTURE_ROOT)
-    fixture_root: Optional[Path] = Path(fixture_raw) if fixture_raw else None
+    fixture_root: Path | None = Path(fixture_raw) if fixture_raw else None
     return DaemonConfig(
         host=host_raw,
         port=port,
@@ -323,7 +330,7 @@ class JsonEnvelope:
         return json.dumps(self.to_dict(), ensure_ascii=False, separators=(",", ":"))
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "JsonEnvelope":
+    def from_dict(cls, data: dict[str, Any]) -> JsonEnvelope:
         if not isinstance(data, dict):
             raise JsonEnvelopeError(
                 f"envelope must be a JSON object; got {type(data).__name__}"
@@ -433,14 +440,14 @@ class Daemon:
     ) -> None:
         self._config = config
         self._handler: MessageHandler = handler or _echo_handler
-        self._server: Optional[Any] = None  # type: ignore[assignment]
+        self._server: Any | None = None  # type: ignore[assignment]
         self._connections: set[ServerConnection] = set()
         self._shutdown = asyncio.Event()
         # Per-project LangGraph checkpoint store (feat-018). Created
         # lazily in start() if config.project_path is set; exposed via
         # the .checkpoint_store property for feat-019+ to compile
         # graphs against. None for skeleton-only / project-less runs.
-        self._checkpoint_store: Optional[ProjectCheckpointStore] = None
+        self._checkpoint_store: ProjectCheckpointStore | None = None
         # Per-feature ``asyncio.Event`` keyed by feature_id (=
         # LangGraph thread_id). Created when feat-030's start_feature
         # handler kicks off a run_agent_step, set when either:
@@ -459,14 +466,21 @@ class Daemon:
         # into ``_handle_connection`` only when ``enable_routes()`` is
         # called; the daemon's ``__main__`` does that before ``start()``.
         self._routes_enabled: bool = False
-        self._routes: Optional[Any] = None  # type: ignore[assignment]
+        self._routes: Any | None = None  # type: ignore[assignment]
         # feat-015: per-project rotating log sink. Created in ``start()``
         # when ``config.project_path`` resolves to a registered project;
         # otherwise ``start()`` logs a structured ``project_log_sink_skipped``
         # warn event and continues (graceful fallback). Always closed in
         # ``stop()`` and in ``_on_project_removed`` so a stale file handle
         # cannot survive a project switch.
-        self._log_sink: Optional[RotatingFileSink] = None
+        self._log_sink: RotatingFileSink | None = None
+        # feat-024: per-feature restart counters, keyed by feature_id.
+        # Reused across ``_on_respawn`` calls within one daemon process
+        # so 3 supervisor-driven respawns on the same feature within
+        # the 10-min window exhaust the budget. v0.1 limitation: the
+        # counter is in-memory only — a daemon restart wipes it. v0.2
+        # is expected to persist the counter alongside the project.
+        self._restart_counters: dict[str, RestartBudgetCounter] = {}
 
     @property
     def config(self) -> DaemonConfig:
@@ -491,7 +505,7 @@ class Daemon:
         return self._config.port
 
     @property
-    def checkpoint_store(self) -> Optional[ProjectCheckpointStore]:
+    def checkpoint_store(self) -> ProjectCheckpointStore | None:
         """The per-project LangGraph checkpoint store, or None if unbound.
 
         Available after ``start()`` for daemons started with a
@@ -510,7 +524,7 @@ class Daemon:
             )
         self._handler = handler
 
-    def enable_routes(self) -> "RouteHandler":
+    def enable_routes(self) -> RouteHandler:
         """feat-028: switch the WS message loop to the business-handler
         registry (``heddle_daemon.routes.RouteHandler``).
 
@@ -858,6 +872,247 @@ class Daemon:
                     error_message=str(exc),
                 )
             self._log_sink = None
+
+    # ---------- feat-024: restart recovery hook ----------
+
+    async def _on_respawn(self, features_in_flight: list[str]) -> None:
+        """D-051 / feat-024: post-supervisor-respawn recovery hook.
+
+        Called once after the daemon comes up to handle the case where
+        the supervisor (feat-027) just respawned it after a crash.
+        For every feature that was in flight at the moment of the
+        crash, this method:
+
+          1. Records the restart on a per-feature ``RestartBudgetCounter``.
+          2. Appends an ``attempts[]`` entry with ``outcome="regressed"``
+             and ``note="daemon respawn"`` so the audit log captures
+             every supervisor-driven respawn.
+          3. If the budget is exhausted (default: 3 in 10 min), marks
+             the feature ``blocked`` with reason "restart budget
+             exhausted (N in Mmin)".
+
+        If the project's checkpoint DB is missing or corrupt (i.e.
+        ``is_checkpoint_db_healthy`` returns False), the checkpoint
+        takes priority: every in-flight feature is marked blocked
+        with reason "checkpoint loss detected on daemon respawn" and
+        the hook returns without running the per-feature budget check
+        — a corrupted DB means there's nothing for the agent to
+        resume against, so the budget check would be misleading.
+
+        Both paths use the same fail-soft contract as
+        ``_on_project_removed``: a ``mark_blocked`` failure is logged
+        but never propagates (the respawn must complete cleanly so
+        the daemon can serve the next supervisor instruction). The
+        in-memory counters are still updated so a follow-up respawn
+        sees the correct budget state.
+        """
+        if not features_in_flight:
+            return
+        if self._config.project_path is None:
+            _logging.warn(
+                component="daemon",
+                event="restart_recovery_skipped",
+                msg="respawn hook fired without a project_path; "
+                "cannot resolve feature_list.json",
+            )
+            return
+        from datetime import datetime
+
+
+        feature_list_path = self._config.project_path / "feature_list.json"
+        try:
+            budget_cfg = RestartBudgetConfig.from_env()
+        except ValueError as exc:
+            _logging.warn(
+                component="daemon",
+                event="restart_recovery_config_invalid",
+                msg=f"RestartBudgetConfig.from_env() failed: {exc}; "
+                "using built-in defaults",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+            budget_cfg = RestartBudgetConfig()
+
+        now = datetime.now(UTC)
+
+        # 1. Checkpoint loss takes priority: corrupt / missing DB
+        # means the agent cannot resume; block every in-flight
+        # feature and skip the budget loop.
+        if not is_checkpoint_db_healthy(self._config.project_path):
+            for fid in features_in_flight:
+                self._mark_blocked_failsoft(
+                    feature_list_path=feature_list_path,
+                    feature_id=fid,
+                    reason="checkpoint loss detected on daemon respawn",
+                )
+            _logging.warn(
+                component="daemon",
+                event="restart_recovery_checkpoint_loss",
+                msg=(
+                    f"checkpoint DB unhealthy on respawn; blocked "
+                    f"{len(features_in_flight)} in-flight feature(s) "
+                    "with 'checkpoint loss' reason"
+                ),
+                affected=len(features_in_flight),
+                project_path=str(self._config.project_path),
+            )
+            return
+
+        # 2. Healthy DB: per-feature budget check.
+        for fid in features_in_flight:
+            counter = self._restart_counters.get(fid)
+            if counter is None:
+                counter = RestartBudgetCounter(
+                    feature_id=fid,
+                    window_minutes=budget_cfg.window_minutes,
+                    max_restarts=budget_cfg.max_restarts,
+                )
+                self._restart_counters[fid] = counter
+            counter.record_restart(now)
+            self._append_respawn_attempt(
+                feature_list_path=feature_list_path,
+                feature_id=fid,
+                at=now,
+            )
+            if counter.is_exhausted(now):
+                self._mark_blocked_failsoft(
+                    feature_list_path=feature_list_path,
+                    feature_id=fid,
+                    reason=(
+                        f"restart budget exhausted "
+                        f"({budget_cfg.max_restarts} in "
+                        f"{budget_cfg.window_minutes}min)"
+                    ),
+                )
+                _logging.warn(
+                    component="daemon",
+                    event="restart_recovery_blocked",
+                    msg=(
+                        f"feature {fid!r} hit restart budget "
+                        f"({budget_cfg.max_restarts} in "
+                        f"{budget_cfg.window_minutes}min); "
+                        "transitioned to blocked"
+                    ),
+                    feature_id=fid,
+                    window_minutes=budget_cfg.window_minutes,
+                    max_restarts=budget_cfg.max_restarts,
+                )
+
+    def _mark_blocked_failsoft(
+        self,
+        *,
+        feature_list_path: Path,
+        feature_id: str,
+        reason: str,
+    ) -> None:
+        """Mark a feature blocked; log + swallow on any failure.
+
+        The respawn hook must never propagate an exception: the
+        daemon is already up and serving, and a stranded respawn
+        would silently break the supervisor contract. Mirrors the
+        fail-soft contract of ``_on_project_removed``.
+        """
+        from heddle_common.feature_list_io import mark_blocked as _fl_mark_blocked
+
+        try:
+            _fl_mark_blocked(feature_list_path, feature_id, reason=reason)
+        except SystemExit as exc:
+            # feature_list_io.fail() raises SystemExit. Convert to a
+            # warn event so the daemon keeps running.
+            _logging.warn(
+                component="daemon",
+                event="restart_recovery_block_failed",
+                msg=(
+                    f"mark_blocked({feature_id!r}) refused: {exc}; "
+                    "feature stays at its current status"
+                ),
+                feature_id=feature_id,
+                reason=reason,
+            )
+        except Exception as exc:
+            _logging.warn(
+                component="daemon",
+                event="restart_recovery_block_failed",
+                msg=(
+                    f"mark_blocked({feature_id!r}) raised: {exc}; "
+                    "feature stays at its current status"
+                ),
+                feature_id=feature_id,
+                reason=reason,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+
+    def _append_respawn_attempt(
+        self,
+        *,
+        feature_list_path: Path,
+        feature_id: str,
+        at: "datetime",
+    ) -> None:
+        """Append a ``regressed`` attempt entry for a respawn.
+
+        Uses ``feature_list_io`` load/save primitives directly so
+        we don't have to maintain a parallel writer for the audit
+        log. Best-effort: any failure is logged and swallowed so
+        the respawn path is never blocked by a write error.
+        """
+        from heddle_common import feature_list_io as _fl_io
+
+        try:
+            data = _fl_io.load(feature_list_path)
+        except (SystemExit, Exception) as exc:  # noqa: BLE001
+            _logging.warn(
+                component="daemon",
+                event="restart_recovery_attempt_log_failed",
+                msg=(
+                    f"cannot load feature_list.json to log respawn "
+                    f"attempt for {feature_id!r}: {exc}"
+                ),
+                feature_id=feature_id,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+            return
+        feature = _fl_io._find_feature(data, feature_id)
+        if feature is None:
+            # Unknown feature id (e.g. a stale entry from a previous
+            # project) — log + continue, don't crash the respawn.
+            _logging.warn(
+                component="daemon",
+                event="restart_recovery_attempt_log_skipped",
+                msg=(
+                    f"feature {feature_id!r} not found in "
+                    f"{feature_list_path}; skipping audit-log append"
+                ),
+                feature_id=feature_id,
+            )
+            return
+        _fl_io._ensure_extras(feature)
+        # The audit log entry follows the same shape as
+        # feature_list_io._append_attempt (session=None for the
+        # respawn-driven entry; backfilled by session_end.py).
+        feature.setdefault("attempts", []).append({
+            "session": None,
+            "by": "coding-agent",
+            "outcome": "regressed",
+            "note": "daemon respawn",
+            "at": at.date().isoformat(),
+        })
+        try:
+            _fl_io.save(feature_list_path, data)
+        except Exception as exc:
+            _logging.warn(
+                component="daemon",
+                event="restart_recovery_attempt_save_failed",
+                msg=(
+                    f"cannot save feature_list.json after logging "
+                    f"respawn attempt for {feature_id!r}: {exc}"
+                ),
+                feature_id=feature_id,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
 
     async def _handle_connection(self, conn: ServerConnection) -> None:
         """Dispatch a single websocket connection."""
