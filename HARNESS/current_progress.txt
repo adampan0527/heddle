@@ -112,8 +112,8 @@ Authoritative definitions: `tools/_constants.py` (`SESSION_STATUSES` /
 SUMMARY
 -------
 Total features: 54
-Passing: 33
-Failing: 21
+Passing: 35
+Failing: 19
 In progress: 0
 Blocked: 0
 Deferred: 0
@@ -307,5 +307,17 @@ Last updated: 2026-09-13
 **Features now passing:** feat-037 (33 / 54 total)
 
 **Notes:** feat-037: KanbanCard visual treatment per spec. KIND_DISPLAY + kindDisplay(); STATUS_EXTRAS + statusExtras(). Added deferred_until to Feature TS interface + TypeBox wire schema (forward-only). bugfix: orange left-edge stripe + wrench in top-right. blocked/deferred/passing: lock/clock/check + text extras. 22 new tests; 107 total web green. pnpm web+node typecheck clean. handoff_check 10/10. Unblocked: feat-056.
+
+---
+### SESSION 19 — 2026-09-13
+
+
+**Worked on:** feat-025 @ 350cd87
+
+**Status:** Implemented and tested
+
+**Features now passing:** feat-025 (35 / 54 total)
+
+**Notes:** Implemented feat-025 daemon-side LLM audit log. New llm_audit.py with JsonLineAppender + LlmAuditLogger; wired into Daemon.start/stop/_on_project_removed and AgentRuntime._call_llm with time.monotonic() timing. 33 new tests pass; 549 total project tests pass; handoff_check 10/10.
 
 ---
