@@ -170,9 +170,49 @@ def test(
 
 
 @cli.command()
-def lint() -> None:
-    """Run linters. Not implemented in v0.1 stub."""
-    click.echo("heddle lint: not yet implemented (feat-053)")
+@click.option(
+    "--js-skip",
+    is_flag=True,
+    default=False,
+    help="Skip the ESLint layer on packages/web + packages/node.",
+)
+@click.option(
+    "--ts-skip",
+    is_flag=True,
+    default=False,
+    help="Skip the TypeScript --noEmit layer on packages/web + packages/node.",
+)
+@click.option(
+    "--py-skip",
+    is_flag=True,
+    default=False,
+    help="Skip the Ruff layer across packages/.",
+)
+def lint(
+    js_skip: bool,
+    ts_skip: bool,
+    py_skip: bool,
+) -> None:
+    """Run linters end-to-end — feat-053.
+
+    Runs ESLint on JavaScript/TypeScript, ``tsc --noEmit`` on the
+    two TypeScript workspaces, and Ruff on the Python packages.
+    Aggregates every suite's exit code, prints a summary table,
+    and exits 0 only if every non-skipped check passed. Skipped
+    suites never contribute to the failure count. Mirrors the
+    ``heddle test`` orchestrator (feat-052) so the operator gets
+    a single command for "all linters must pass".
+    """
+    from .lint import lint_cmd
+
+    argv: list[str] = []
+    if js_skip:
+        argv.append("--js-skip")
+    if ts_skip:
+        argv.append("--ts-skip")
+    if py_skip:
+        argv.append("--py-skip")
+    raise SystemExit(lint_cmd(argv))
 
 
 # ---------- configs subcommand group (feat-011) ----------

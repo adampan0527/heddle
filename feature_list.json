@@ -1598,12 +1598,20 @@
         "Aggregates exit codes; exits 0 only if all pass",
         "Test: run heddle lint in a clean checkout; assert exits 0"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "medium",
       "depends_on": [
         "feat-003"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-053",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1686,8 +1694,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 50,
-    "failing": 4,
+    "passing": 51,
+    "failing": 3,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,
