@@ -86,17 +86,30 @@ def _is_loopback(host: str) -> bool:
 
 
 def _resolve_node_dist(repo_root: Path) -> Path:
-    """Return the expected path to the built Node.js entry.
+    """Return the path to the built Node.js entry.
 
-    ``pnpm --filter node build`` emits ``packages/node/dist/main.js``
-    (TypeScript ``outDir`` per ``packages/node/tsconfig.json``). The
-    start command does NOT auto-build the Node bundle — auto-building
-    a transpiled-binary sidecar on every ``heddle start`` is too
-    surprising; the web bundle auto-builds because it's a single
+    ``pnpm --filter node build`` emits the bundle under
+    ``packages/node/dist/``; with the workspace's current
+    ``tsconfig.json`` (rootDir inferred from the shared ``include``)
+    TypeScript nests the output as ``dist/node/src/main.js`` rather
+    than the flat ``dist/main.js`` we used to emit. We probe both
+    locations and return whichever exists — flat first so a future
+    tsconfig cleanup doesn't need an extra CLI change.
+
+    The start command does NOT auto-build the Node bundle — auto-
+    building a transpiled-binary sidecar on every ``heddle start`` is
+    too surprising; the web bundle auto-builds because it's a single
     ``vite build`` and rarely changes, but the Node transpile cycle
     is a developer action.
     """
-    return repo_root / "packages" / "node" / "dist" / "main.js"
+    candidates = [
+        repo_root / "packages" / "node" / "dist" / "main.js",
+        repo_root / "packages" / "node" / "dist" / "node" / "src" / "main.js",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
 
 
 def _resolve_web_dist(repo_root: Path) -> Path:

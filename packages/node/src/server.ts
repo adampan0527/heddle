@@ -80,13 +80,34 @@ export async function buildServer(
   const app = Fastify({ logger: false }) as any;
   app.setValidatorCompiler(TypeBoxValidatorCompiler);
   await app.register(websocket);
-  const webDist = new URL("../../web/dist", import.meta.url).pathname;
-  await app.register(fastifyStatic, {
-    root: webDist,
-    prefix: "/",
-    decorateReply: false,
-    index: ["index.html"],
-  });
+  // Resolve webDist relative to the source file's import.meta.url.
+// At runtime: import.meta.url is file:///.../packages/node/dist/node/src/server.js,
+// so ../../.. walks up to the repo root, then ../web/dist lands on
+// packages/web/dist (which exists). The previous "../../web/dist" was
+// only correct when the source lived at packages/node/src/server.ts
+// (pre-build) — once compiled to dist/node/src/server.js, the same
+// URL landed on dist/web/dist (which doesn't exist).
+//
+// We resolve the parent directory first (treating `here` as a
+// directory) so the relative `../../..` walks up the directory tree;
+// without that, the WHATWG URL parser treats `here` as a file path
+// and `../../..` only escapes three path segments from the file name.
+const here = new URL(import.meta.url);
+const hereDir = new URL(".", here);
+const repoRoot = new URL("../../..", hereDir);
+const webDistUrl = new URL("../web/dist", repoRoot);
+// WHATWG URL pathname on Windows returns "/C:/..." with a leading
+// slash that Node's fs APIs reject ("ENOENT" / `existsSync=false`).
+// Strip the leading slash so fs sees a normal Windows path.
+const webDist =
+  process.platform === "win32" && webDistUrl.pathname.startsWith("/")
+    ? webDistUrl.pathname.slice(1)
+    : webDistUrl.pathname;
+await app.register(fastifyStatic, {
+  root: webDist,
+  prefix: "/",
+  index: ["index.html"],
+});
 
   const { registerProjectRoutes } = await import("./routes/projects.js");
   const { registerFeatureRoutes } = await import("./routes/features.js");
