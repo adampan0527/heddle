@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Top-level kanban board — feat-035 / feat-036.
+ * Top-level kanban board — feat-035 / feat-036 / feat-056.
  *
  * Layout: a 3-column responsive grid (`grid-cols-1 md:grid-cols-3`)
  * holding one `<KanbanColumn />` per `KanbanColumnId`. Each column
@@ -31,9 +31,17 @@
  *      through (e.g. via a future change), the cast + the column-only
  *      match would still cause `decideDrop` to return noop.
  *
+ * feat-056: the kanban header renders a `<KindFilter />` dropdown
+ * that drives `useKanbanStore.kindFilter`. The feature list is
+ * filtered by `applyKindFilter` BEFORE bucketing into columns and
+ * lanes, so the column cards, lane cards, and lane count badges all
+ * reflect the same filtered set. Filtered-out features are hidden
+ * from drag targets too — the user cannot drop a kind that's not
+ * visible.
+ *
  * The data flow is deliberately unidirectional:
  *
- *   server → useFeatures → kanban store → columns → cards
+ *   server → useFeatures → applyKindFilter → kanban store → columns → cards
  *   drag end → useStartFeature → server → invalidate → re-fetch
  *
  * No state lives in this component; both server data (TanStack) and
@@ -62,6 +70,7 @@ import {
 } from "../lib/state/kanban-store.ts";
 import { useUiStore } from "../lib/state/ui-store.ts";
 import { toastError } from "../lib/toast.ts";
+import { applyKindFilter, KindFilter } from "./KindFilter.tsx";
 import { KanbanCard } from "./KanbanCard.tsx";
 import { KanbanColumn } from "./KanbanColumn.tsx";
 import { KanbanLaneRow } from "./KanbanLaneRow.tsx";
@@ -179,6 +188,13 @@ export function Kanban({ projectId }: KanbanProps): React.ReactElement {
   // feat-041: DAG view toggle state.
   const dagViewOpen = useUiStore((s) => s.dagViewOpen);
   const toggleDagView = useUiStore((s) => s.toggleDagView);
+  // feat-056: kind-filter dropdown value (all / feature / bugfix / enhancement).
+  // The filter is applied to the rendering list below, AFTER the drag handler
+  // has already snapshotted `features.data` for `decideDrop` validation. That
+  // way drag rules still see the full feature set (so an in_progress feature
+  // hidden by the filter still blocks starting another) but the visible board
+  // matches the dropdown.
+  const kindFilter = useKanbanStore((s) => s.kindFilter);
 
   // Require a small movement (~4px) before starting a drag so clicks
   // on a card still register as clicks (not as drag starts).
@@ -244,11 +260,15 @@ export function Kanban({ projectId }: KanbanProps): React.ReactElement {
     );
   }
 
-  const list = features.data ?? [];
+  // feat-056: apply the kind filter BEFORE bucketing. `applyKindFilter`
+  // returns the input untouched when `kindFilter === "all"`, so the
+  // common case is a single spread + identical-array fast path.
+  const filteredList = applyKindFilter(features.data ?? [], kindFilter);
+
   const byColumn = new Map<KanbanColumnId, Feature[]>(
     COLUMNS.map((c) => [c.id, [] as Feature[]]),
   );
-  for (const f of list) {
+  for (const f of filteredList) {
     // `columnOf` may return `null` for features that live in a bottom
     // lane (feat-036). Those are routed to <KanbanLaneRow /> below
     // via `laneOf`, so we silently skip them here.
@@ -270,20 +290,23 @@ export function Kanban({ projectId }: KanbanProps): React.ReactElement {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
             Kanban
           </h2>
-          <button
-            type="button"
-            data-kanban-dag-toggle
-            aria-label={dagViewOpen ? "Close DAG view" : "Open DAG view"}
-            aria-pressed={dagViewOpen}
-            onClick={toggleDagView}
-            className={`rounded border px-2 py-1 text-xs ${
-              dagViewOpen
-                ? "border-blue-500 bg-blue-950 text-blue-200"
-                : "border-zinc-700 hover:bg-zinc-800"
-            }`}
-          >
-            {dagViewOpen ? "Hide DAG" : "Show DAG"}
-          </button>
+          <div className="flex items-center gap-2">
+            <KindFilter />
+            <button
+              type="button"
+              data-kanban-dag-toggle
+              aria-label={dagViewOpen ? "Close DAG view" : "Open DAG view"}
+              aria-pressed={dagViewOpen}
+              onClick={toggleDagView}
+              className={`rounded border px-2 py-1 text-xs ${
+                dagViewOpen
+                  ? "border-blue-500 bg-blue-950 text-blue-200"
+                  : "border-zinc-700 hover:bg-zinc-800"
+              }`}
+            >
+              {dagViewOpen ? "Hide DAG" : "Show DAG"}
+            </button>
+          </div>
         </div>
         <div
           className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-3"
@@ -310,7 +333,7 @@ export function Kanban({ projectId }: KanbanProps): React.ReactElement {
             );
           })}
         </div>
-        <KanbanLaneRow features={list} />
+        <KanbanLaneRow features={filteredList} />
       </div>
     </DndContext>
   );

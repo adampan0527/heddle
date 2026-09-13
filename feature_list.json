@@ -1694,13 +1694,21 @@
         "Filter persists in localStorage so it survives page reload",
         "Test: with bugfix + feature cards, switch filter to bugfixes; assert only bugfix cards are visible"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "medium",
       "depends_on": [
         "feat-035",
         "feat-037"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-056",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1710,8 +1718,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 53,
-    "failing": 1,
+    "passing": 54,
+    "failing": 0,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,
