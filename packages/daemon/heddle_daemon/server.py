@@ -67,6 +67,11 @@ from heddle_daemon.checkpointing import (
     ProjectCheckpointStore,
     is_checkpoint_db_healthy,
 )
+from heddle_daemon.crash_recovery import (
+    BLOCKED_REASON_CHECKPOINT_LOSS,
+    BLOCKED_REASON_RESTART_BUDGET,
+    resume_in_flight_features,
+)
 from heddle_daemon.llm_audit import LlmAuditLogger, resolve_logs_dir
 from heddle_daemon.restart_budget import (
     RestartBudgetConfig,
@@ -634,6 +639,17 @@ class Daemon:
         # Mirrors the rotation sink's graceful fallback: missing /
         # unmatched project → warn event + continue, no abort.
         self._attach_llm_audit()
+
+        # feat-047: resume in-flight features from the project
+        # checkpoint DB. Runs AFTER the checkpoint store is up
+        # (so ``alist()`` can query thread presence), AFTER the
+        # per-feature restart counters are wired (we read or
+        # lazily create them), and AFTER the rotating log sink
+        # + audit logger are attached (so the
+        # ``restart_recovery_completed`` event lands on disk).
+        # Fail-soft: any exception inside the orchestrator is
+        # logged at warn level; the daemon still binds the socket.
+        await self._resume_in_flight_features_on_startup()
 
         self._server = await serve(
             self._handle_connection,
@@ -1273,6 +1289,109 @@ class Daemon:
                 feature_id=feature_id,
                 error_type=type(exc).__name__,
                 error_message=str(exc),
+            )
+
+    # ---------- feat-047: crash recovery via checkpoint resume ----------
+
+    async def _resume_in_flight_features_on_startup(self) -> None:
+        """feat-047 (D-051): enumerate in-flight features and decide.
+
+        Called from :meth:`start` AFTER the checkpoint store, log
+        sink, and LLM audit logger are attached. Walks the project's
+        ``feature_list.json`` and, for every ``in_progress`` feature,
+        decides one of: resume from checkpoint, block on restart
+        budget exhaustion, block on checkpoint loss. Emits a single
+        ``restart_recovery_completed`` log event summarising the
+        outcome.
+
+        Skips silently when ``config.project_path`` is unset
+        (skeleton-mode daemon) so first-run / unregistered-project
+        daemons keep working without needing a project_path.
+
+        Fail-soft: any exception is logged at warn level and the
+        daemon still binds its WS socket. A crash-recovery failure
+        must NEVER prevent the daemon from serving — the alternative
+        is a stranded daemon.
+        """
+        if self._config.project_path is None:
+            # No project bound; nothing to resume. Log once at debug
+            # level (info would be noisy for every skeleton-mode test).
+            return
+        project_path = self._config.project_path
+        feature_list_path = project_path / "feature_list.json"
+
+        # Resolve the restart budget config (env-var-driven). On any
+        # failure we fall back to the built-in defaults and log a
+        # warn event — feat-024's contract: never refuse to start.
+        try:
+            from heddle_daemon.restart_budget import RestartBudgetConfig
+            budget_cfg = RestartBudgetConfig.from_env()
+        except (ValueError, Exception) as exc:
+            _logging.warn(
+                component="daemon",
+                event="restart_recovery_config_invalid",
+                msg=f"RestartBudgetConfig.from_env() failed: {exc}; "
+                "using built-in defaults",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+            from heddle_daemon.restart_budget import RestartBudgetConfig
+            budget_cfg = RestartBudgetConfig()
+
+        def _counter_getter(feature_id: str):
+            counter = self._restart_counters.get(feature_id)
+            if counter is None:
+                counter = RestartBudgetCounter(
+                    feature_id=feature_id,
+                    window_minutes=budget_cfg.window_minutes,
+                    max_restarts=budget_cfg.max_restarts,
+                )
+                self._restart_counters[feature_id] = counter
+            return counter
+
+        try:
+            report = await resume_in_flight_features(
+                project_path=project_path,
+                feature_list_path=feature_list_path,
+                checkpoint_store=self._checkpoint_store,
+                restart_counter_getter=_counter_getter,
+            )
+        except (SystemExit, Exception) as exc:
+            _logging.warn(
+                component="daemon",
+                event="restart_recovery_failed",
+                msg=f"resume_in_flight_features raised: {exc}; "
+                "daemon continues to serve without recovery",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+            return
+
+        # Emit the structured summary event. The two lists are
+        # intentionally serialised as plain JSON arrays so the
+        # downstream log sink (feat-015) and the WS event channel
+        # can both parse them without custom decoders.
+        blocked_pairs = report.blocked_pairs
+        if blocked_pairs or report.resumed:
+            level = _logging.warn if blocked_pairs else _logging.info
+            level(
+                component="daemon",
+                event="restart_recovery_completed",
+                msg=(
+                    f"crash recovery completed: "
+                    f"{len(report.resumed)} resumed, "
+                    f"{len(blocked_pairs)} blocked"
+                ),
+                resumed=report.resumed,
+                blocked=blocked_pairs,
+            )
+        else:
+            _logging.info(
+                component="daemon",
+                event="restart_recovery_completed",
+                msg="crash recovery completed: no in-flight features",
+                resumed=[],
+                blocked=[],
             )
 
     async def _handle_connection(self, conn: ServerConnection) -> None:

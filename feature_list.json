@@ -1402,13 +1402,21 @@
         "On resume, increment the feature's restart counter; check budget per feat-024",
         "Test: start a feature with HEDDLE_FAKE_LLM=1; kill the daemon at step 5 of 10; restart daemon; assert the feature resumes at step 5 and completes"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "medium",
       "depends_on": [
         "feat-018",
         "feat-024"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-047",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1638,8 +1646,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 44,
-    "failing": 10,
+    "passing": 45,
+    "failing": 9,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,
