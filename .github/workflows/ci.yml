@@ -94,7 +94,7 @@ jobs:
         run: python -m unittest discover -s packages/common/heddle_common/tests -v
 
       - name: HARNESS tools tests
-        run: python -m unittest discover -s HARNESS/tests -v
+        run: python -m pytest HARNESS/tests -v
 
       - name: pnpm test
         # Per feat-006 step 3 ("pnpm test") the web test runner is
