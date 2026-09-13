@@ -498,7 +498,7 @@ class TestDialogTurnEvent(_CommandTestBase):
         self.assertEqual(len(events), 1)
         self.assertEqual(events[0].extra.get("event"), "dialog_done")
         self.assertEqual(events[0].extra.get("project_id"), self.project_id)
-        # Stub payload mirrors the chat echo.
-        self.assertEqual(
-            events[0].extra["payload"]["full_text"], "echo: hello"
-        )
+        # feat-044: dialog_done payload carries the friendly chat
+        # text and the classified intent ("chat" for a plain greeting).
+        self.assertIn("add or change", events[0].extra["payload"]["full_text"])
+        self.assertEqual(events[0].extra["payload"]["intent"], "chat")

@@ -77,6 +77,7 @@ from heddle_common.project_cascade import (
     remove_project_with_cascade,
 )
 
+from .intent import classify_intent
 from .llm import LLMConfigError
 from .server import JsonEnvelope, build_envelope
 
@@ -121,6 +122,22 @@ MAX_DIALOG_MESSAGE_CHARS: int = 8000
 # directory, NOT under ``.heddle/``. This keeps HARNESS CLI and
 # the heddle daemon interoperable on the same project (DESIGN.md D-057).
 DEFAULT_FEATURE_LIST_PATH: str = "feature_list.json"
+
+# feat-044: short friendly reply for messages classified as "chat".
+# Surfaced in the Web UI dialog transcript; intentionally short so a
+# chatty message doesn't bloat the transcript with a paragraph.
+_CHAT_REPLY_TEXT: str = (
+    "Got it. I'm here to help — what would you like to add or change?"
+)
+
+# feat-044 placeholder: a work-classified message gets this short
+# text for v0.1 because feat-045 (LLM-driven decomposition) is not
+# wired yet. The intent field in the response is what the Web UI
+# inspects; the text is a courtesy so the dialog transcript is not
+# silent. feat-045 will replace this with a draft-cards payload.
+_WORK_PLACEHOLDER_TEXT: str = (
+    "I'm classifying this as work — decomposition arrives in feat-045."
+)
 
 
 # ---------- error type ----------
@@ -309,7 +326,7 @@ class RouteHandler:
                 data = self._feature_transition(env.extra)
                 return self._ok_response(req_id, env.type, data)
             if env.type == "dialog_turn":
-                data = await self._dialog_turn_stub(env.extra)
+                data = await self._dialog_turn(env.extra)
                 return self._ok_response(req_id, env.type, data)
             # feat-030: per-feature command handlers. Each one is a
             # wire-shape stub right now (validates input + emits a
@@ -443,20 +460,32 @@ class RouteHandler:
             "feature": feature_row,
         }
 
-    async def _dialog_turn_stub(self, extras: dict[str, Any]) -> dict[str, Any]:
-        """v0.1 stub — replaced by feat-044 intent classification.
+    async def _dialog_turn(self, extras: dict[str, Any]) -> dict[str, Any]:
+        """feat-044: classify the user message as ``chat`` or ``work``.
 
-        Validates the message envelope and echoes it back as a chat
-        response so the Web UI can render something while the real
-        LLM-backed path is in development. The stub deliberately
-        returns ``kind: "chat"`` (no draft cards) so feat-040's draft
-        tray never lights up for stub replies.
+        Behavior (D-017):
 
-        Async (not sync) because the stub emits a ``dialog_done``
-        event after constructing its reply — feat-030 wires the
-        event_emitter so future streamed-token handlers can sit
-        between the LLM call and the terminal response without a
-        shape change.
+          * ``chat`` — return a short friendly text reply WITHOUT
+            entering the draft-card flow. The Web UI renders the
+            reply in the dialog transcript and the draft tray (feat-040)
+            never lights up.
+          * ``work`` — for v0.1 we return the same ``chat`` shape
+            (no draft cards yet) so feat-040's tray stays dark.
+            feat-045 will replace this branch with the LLM-driven
+            decomposition that produces real draft cards.
+
+        v0.1 classification is a heuristic (no LLM call); see
+        ``heddle_daemon.intent`` for the full rule. The handler
+        validates the message envelope + project_id, classifies,
+        and returns ``{project_id, kind, text}`` regardless of
+        intent — keeping the wire shape symmetric so feat-045 can
+        extend the ``work`` branch without breaking the chat one.
+
+        Async (not sync) because the handler emits a
+        ``dialog_done`` event after constructing its reply —
+        feat-030 wires the event_emitter so future streamed-token
+        handlers can sit between the LLM call and the terminal
+        response without a shape change.
         """
         project_id = extras.get("project_id")
         message = extras.get("message")
@@ -471,24 +500,41 @@ class RouteHandler:
                 code="invalid_input",
             )
         # Validate the project exists; we don't read feature_list here
-        # (feat-044 needs the full feature-list context, and that's a
-        # downstream feature). The lookup ensures a typo'd project_id
-        # gets a 404 instead of a stub reply.
+        # (feat-045 needs the full feature-list context for LLM-driven
+        # decomposition, and that's a downstream feature). The lookup
+        # ensures a typo'd project_id gets a 404 instead of a friendly
+        # reply for a project the user does not own.
         self._lookup_project(project_id)
-        text = f"echo: {message}"
+        intent = classify_intent(message)
+        if intent == "work":
+            # feat-045 placeholder: the real LLM-driven decomposition
+            # lands here. For v0.1 we still return kind="chat" so the
+            # wire shape stays symmetric (feat-040's draft tray stays
+            # dark until feat-045 wires draft cards).
+            text = _WORK_PLACEHOLDER_TEXT
+        else:
+            text = _CHAT_REPLY_TEXT
+        _logging.info(
+            component="routes",
+            event="dialog_intent_classified",
+            msg=f"dialog_turn classified as {intent!r}",
+            project_id=project_id,
+            intent=intent,
+        )
         # feat-030: emit a dialog_done marker so the Node.js side
         # sees the symmetric (token... done) shape even for the
-        # stub. A real LLM path will replace this with per-token
-        # dialog_token events.
+        # heuristic path. A real LLM path will replace this with
+        # per-token dialog_token events.
         await self.emit_event(
             "dialog_done",
             project_id=project_id,
             feature_id=None,
-            payload={"full_text": text},
+            payload={"full_text": text, "intent": intent},
         )
         return {
             "project_id": project_id,
             "kind": "chat",
+            "intent": intent,
             "text": text,
         }
 

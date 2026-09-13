@@ -1308,13 +1308,21 @@
         "Test: send a chat message ('hi how are you'); assert response is plain text with no draft cards",
         "Test: send a work message ('add OAuth login'); assert response has draft cards"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-019",
         "feat-023"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-044",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1614,8 +1622,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 41,
-    "failing": 13,
+    "passing": 42,
+    "failing": 12,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

@@ -11,7 +11,10 @@ feat-029/030.
 
 What this test does NOT cover:
   - The Node.js side. That's the ``packages/node/tests/`` suite.
-  - LLM-backed dialog (feat-044). v0.1 dialog_turn is the chat stub.
+  - LLM-backed dialog decomposition (feat-045). v0.1 dialog_turn
+    runs through the feat-044 intent classifier; chat returns a
+    friendly text, work returns a placeholder text (no draft
+    cards yet).
   - The full cascade including the daemon hook (covered by feat-014's
     own test_server_project_removed.py).
 
@@ -331,7 +334,7 @@ class TestFeatureHandlers(unittest.IsolatedAsyncioTestCase):
 
 
 class TestDialogStub(unittest.IsolatedAsyncioTestCase):
-    """dialog_turn is the v0.1 chat stub; feat-044 replaces it."""
+    """dialog_turn routes through feat-044's intent classifier."""
 
     async def asyncSetUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -356,7 +359,10 @@ class TestDialogStub(unittest.IsolatedAsyncioTestCase):
         )
         self.project_id = self.project.id
 
-    async def test_dialog_turn_returns_chat_echo(self) -> None:
+    async def test_dialog_turn_chat_returns_friendly_text(self) -> None:
+        """``hello world`` classifies as chat; reply is the v0.1
+        friendly text (no draft cards, no echo of the input).
+        """
         env = build_envelope(
             "dialog_turn",
             req_id="d1",
@@ -367,7 +373,28 @@ class TestDialogStub(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(resp.extra.get("ok"), resp.extra)
         data = resp.extra["data"]
         self.assertEqual(data["kind"], "chat")
-        self.assertEqual(data["text"], "echo: hello world")
+        self.assertEqual(data["intent"], "chat")
+        # Friendly reply — NOT the feat-028 stub's "echo: ..." text.
+        self.assertIn("add or change", data["text"])
+        self.assertFalse(data["text"].startswith("echo: "))
+
+    async def test_dialog_turn_work_classifies_as_work(self) -> None:
+        """``add OAuth login`` classifies as work; v0.1 still returns
+        ``kind: "chat"`` with the work-placeholder text because
+        feat-045 (LLM-driven decomposition) has not landed yet.
+        """
+        env = build_envelope(
+            "dialog_turn",
+            req_id="d1w",
+            project_id=self.project_id,
+            message="add OAuth login",
+        )
+        resp = await _round_trip(self.daemon, env)
+        self.assertTrue(resp.extra.get("ok"), resp.extra)
+        data = resp.extra["data"]
+        self.assertEqual(data["intent"], "work")
+        # v0.1 placeholder: no draft cards yet.
+        self.assertEqual(data["kind"], "chat")
 
     async def test_dialog_turn_empty_message_rejected(self) -> None:
         env = build_envelope(
