@@ -116,9 +116,57 @@ def dev(
 
 
 @cli.command()
-def test() -> None:
-    """Run the test pyramid. Not implemented in v0.1 stub."""
-    click.echo("heddle test: not yet implemented (feat-052)")
+@click.option(
+    "--js-skip",
+    is_flag=True,
+    default=False,
+    help="Skip the JS unit-test layer (Vitest in packages/web + packages/node).",
+)
+@click.option(
+    "--py-skip",
+    is_flag=True,
+    default=False,
+    help="Skip the Python unit-test layer (pytest in packages/common, packages/daemon, packages/cli).",
+)
+@click.option(
+    "--e2e-skip",
+    is_flag=True,
+    default=False,
+    help="Skip the Playwright browser E2E layer (stubbed in v0.1).",
+)
+@click.option(
+    "--real-llm",
+    is_flag=True,
+    default=False,
+    help="Do NOT inject HEDDLE_FAKE_LLM=1 into child envs. Default is fake-LLM mode for determinism.",
+)
+def test(
+    js_skip: bool,
+    py_skip: bool,
+    e2e_skip: bool,
+    real_llm: bool,
+) -> None:
+    """Run the full test pyramid — feat-052.
+
+    Runs JS (Vitest), Python (pytest), and (optionally) Playwright
+    E2E suites end-to-end. Every child inherits
+    ``HEDDLE_FAKE_LLM=1`` unless ``--real-llm`` was passed (per
+    feat-006 the CI default is fake-LLM; nightly live-LLM runs are
+    gated on a repo secret). Exits 0 only if every non-skipped
+    suite passed; prints a summary table otherwise.
+    """
+    from .test import test_cmd
+
+    argv: list[str] = []
+    if js_skip:
+        argv.append("--js-skip")
+    if py_skip:
+        argv.append("--py-skip")
+    if e2e_skip:
+        argv.append("--e2e-skip")
+    if real_llm:
+        argv.append("--real-llm")
+    raise SystemExit(test_cmd(argv))
 
 
 @cli.command()
