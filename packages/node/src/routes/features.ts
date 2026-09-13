@@ -103,10 +103,17 @@ const FeatureParamsSchema = Type.Object({
 // the value may be a string (explicit config name) or null (force
 // the daemon's default-fallback path, ignoring whatever the feature
 // row says).
+//
+// feat-043 (D-033) adds an optional ``hint`` field for retry-with-hint.
+// The hint is forwarded to the daemon's ``retry_feature`` WS command
+// (already accepts ``hint`` per packages/node/src/protocol.ts); the
+// daemon forwards it to the LLM agent on the next run. v0.1 clients
+// that don't know about retry-with-hint simply omit the field.
 const StartOrRetryBodySchema = Type.Object({
   implementation_model: Type.Optional(
     Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
   ),
+  hint: Type.Optional(Type.String()),
 });
 
 // ---------- plugin ----------
@@ -194,6 +201,12 @@ export const registerFeatureRoutes: FastifyPluginAsync<
   // daemon resolves the model against its LLM-config registry and
   // emits `feature_attempt_started` + `llm_resolved` events back to
   // the browser over the WS stream.
+  //
+  // feat-043 (D-033) layers `hint` on top: when the client posts a
+  // `/retry` with `hint`, we forward it to `retry_feature` so the
+  // daemon can route it to the LLM on the next attempt. `start_feature`
+  // intentionally drops the hint if a client smuggles it in — the
+  // daemon never uses hint on the first run.
   const forwardExecution = async (
     req: any,
     reply: any,
@@ -210,6 +223,15 @@ export const registerFeatureRoutes: FastifyPluginAsync<
     // skipping the key keeps the wire narrow for legacy clients.
     if (Object.prototype.hasOwnProperty.call(body, "implementation_model")) {
       payload.implementation_model = body.implementation_model;
+    }
+    // feat-043: forward the hint only for retry_feature. The daemon
+    // protocol accepts `hint?: string` (see packages/node/src/protocol.ts)
+    // and the executor feeds it to the LLM on the next attempt.
+    if (
+      daemonCommand === "retry_feature" &&
+      typeof body.hint === "string"
+    ) {
+      payload.hint = body.hint;
     }
     const out = await forwardOrFail<unknown>(supervisor, daemonCommand, payload, reply);
     if (!out.ok) {

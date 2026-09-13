@@ -11,6 +11,11 @@
  * the column highlight flips immediately, then rolls back on failure
  * (the daemon enforces single-active server-side, but we want the UI
  * to feel instant on the happy path).
+ *
+ * feat-043 (D-033) adds `useRetryFeature` and `useTransitionFeature`
+ * for the `@feat-XXX retry / retry-with-hint / mark-done / abandon`
+ * dialog commands. Both mutations invalidate the features list so the
+ * kanban reflects the new status without a manual refresh.
  */
 
 import {
@@ -20,7 +25,13 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import type { ApiErr, ApiOk, DraftCard, Feature } from "@heddle/shared";
+import type {
+  ApiErr,
+  ApiOk,
+  DraftCard,
+  Feature,
+  TransitionAction,
+} from "@heddle/shared";
 
 import { apiFetch } from "../query-client.js";
 import { unwrap } from "./errors.js";
@@ -144,6 +155,115 @@ export function useConfirmDrafts(
       );
       const parsed = (await res.json()) as
         | ApiOk<ConfirmDraftsData>
+        | ApiErr;
+      return unwrap(parsed, res.status);
+    },
+    onSettled: () => {
+      if (!projectId) return;
+      void qc.invalidateQueries({ queryKey: featuresKey(projectId) });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// feat-043 / D-033: failure-handling dialog commands.
+//
+// Two new mutations power the `@feat-XXX retry` and `@feat-XXX
+// retry-with-hint:<text>` shortcuts (POST .../retry) and the
+// `@feat-XXX mark-done` / `@feat-XXX abandon` shortcuts
+// (POST .../transition). Both invalidate the features query on settle
+// so the kanban/Dialog transcript reflects the new status without a
+// manual refresh.
+// ---------------------------------------------------------------------------
+
+/** Body of POST /api/projects/:id/features/:fid/retry. */
+export interface RetryFeatureBody {
+  featureId: string;
+  /** Optional LLM hint for retry-with-hint. Forwarded to the daemon
+   *  verbatim and fed to the LLM on the next attempt. */
+  hint?: string;
+}
+
+/** Successful response from POST .../retry. The daemon returns the
+ *  refreshed feature row so the kanban can update without a refetch
+ *  when the WS event stream lags. */
+export interface RetryFeatureData {
+  project_id: string;
+  feature_id: string;
+  feature: Feature;
+}
+
+/**
+ * POST /api/projects/:id/features/:fid/retry
+ *
+ * Powers `@feat-XXX retry` and `@feat-XXX retry-with-hint:<text>`.
+ * Invalidates the features list on settle so the kanban picks up the
+ * status flip (typically pending/in_progress → in_progress).
+ */
+export function useRetryFeature(
+  projectId: string | null,
+): UseMutationResult<RetryFeatureData, Error, RetryFeatureBody> {
+  const qc = useQueryClient();
+  return useMutation<RetryFeatureData, Error, RetryFeatureBody>({
+    mutationFn: async ({ featureId, hint }) => {
+      if (!projectId) throw new Error("no active project");
+      const body: Record<string, unknown> = {};
+      // Only forward `hint` when explicitly set — matches the
+      // forwardExecution helper in packages/node/src/routes/features.ts
+      // which forwards the field only when present.
+      if (typeof hint === "string") body.hint = hint;
+      const res = await apiFetch(
+        `/api/projects/${projectId}/features/${featureId}/retry`,
+        { method: "POST", body: JSON.stringify(body) },
+      );
+      const parsed = (await res.json()) as
+        | ApiOk<RetryFeatureData>
+        | ApiErr;
+      return unwrap(parsed, res.status);
+    },
+    onSettled: () => {
+      if (!projectId) return;
+      void qc.invalidateQueries({ queryKey: featuresKey(projectId) });
+    },
+  });
+}
+
+/** Body of POST /api/projects/:id/features/:fid/transition. */
+export interface TransitionFeatureBody {
+  featureId: string;
+  action: TransitionAction;
+}
+
+/** Successful response from POST .../transition. */
+export interface TransitionFeatureData {
+  project_id: string;
+  feature_id: string;
+  action: TransitionAction;
+  feature: Feature;
+}
+
+/**
+ * POST /api/projects/:id/features/:fid/transition
+ *
+ * Powers `@feat-XXX mark-done` (action: "mark-done") and
+ * `@feat-XXX abandon` (action: "abandon"). The daemon maps
+ * `mark-done` → `passing` (with a manual-override note) and
+ * `abandon` → `blocked`. The hook invalidates the features query
+ * so the kanban re-renders the new status.
+ */
+export function useTransitionFeature(
+  projectId: string | null,
+): UseMutationResult<TransitionFeatureData, Error, TransitionFeatureBody> {
+  const qc = useQueryClient();
+  return useMutation<TransitionFeatureData, Error, TransitionFeatureBody>({
+    mutationFn: async ({ featureId, action }) => {
+      if (!projectId) throw new Error("no active project");
+      const res = await apiFetch(
+        `/api/projects/${projectId}/features/${featureId}/transition`,
+        { method: "POST", body: JSON.stringify({ action }) },
+      );
+      const parsed = (await res.json()) as
+        | ApiOk<TransitionFeatureData>
         | ApiErr;
       return unwrap(parsed, res.status);
     },

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Diagnosis helpers for the dialog transcript — feat-042.
+ * Diagnosis + dialog-command helpers (feat-042 / feat-043).
  *
- * Two responsibilities:
+ * Three responsibilities:
  *
  *   1. `extractDiagnosis` — recognise a `DialogResponse` as carrying
  *      a structured diagnosis, whether via the typed
@@ -11,7 +11,14 @@
  *
  *   2. `mockDiagnoseResponse` — synthesise a v0.1 typed diagnosis
  *      envelope for the `@feat-XXX diagnose` shortcut, until
- *      feat-043 lands a real daemon-side handler.
+ *      the daemon-side handler ships.
+ *
+ *   3. `parseDialogCommand` (feat-043, D-033) — recognise an
+ *      `@feat-XXX <command>` shape and route it to one of
+ *      `diagnose` / `retry` / `retry-with-hint:<text>` /
+ *      `mark-done` / `abandon`. Returns a typed parsed object so
+ *      the dialog submit hook can dispatch without re-running
+ *      the regexes.
  *
  * The diff / marker parser lives here (not in `DiagnosisReport.tsx`)
  * because the parsing rules are independent of the rendering —
@@ -131,4 +138,88 @@ export function mockDiagnoseResponse(
 
 function truncate(s: string, n: number): string {
   return s.length <= n ? s : s.slice(0, n - 1) + "…";
+}
+
+// ---------------------------------------------------------------------------
+// feat-043 / D-033: failure-handling dialog commands.
+//
+// Recognised verbs: `diagnose`, `retry`, `retry-with-hint:<text>`,
+// `mark-done`, `abandon`. Each maps to a backend handler:
+//   - diagnose                → existing mock (or future daemon handler)
+//   - retry                   → POST /api/projects/:id/features/:fid/retry
+//   - retry-with-hint:<text>  → same route with a `hint` body field
+//   - mark-done               → POST .../transition {action: "mark-done"}
+//   - abandon                 → POST .../transition {action: "abandon"}
+//
+// The parser is permissive about whitespace and case so the user
+// types naturally ("@feat-003 Retry with hint: please use OpenAI").
+// It returns `null` for non-command inputs so the dialog submit
+// handler can fall back to the regular chat/diagnose flow without
+// re-running regexes itself.
+// ---------------------------------------------------------------------------
+
+export type DialogCommandKind =
+  | "diagnose"
+  | "retry"
+  | "retry-with-hint"
+  | "mark-done"
+  | "abandon";
+
+export interface DialogCommand {
+  kind: "command";
+  featureId: string;
+  command: DialogCommandKind;
+  /** Populated only for `retry-with-hint`. The hint text after the colon,
+   *  trimmed of leading whitespace. Empty string is preserved so the UI
+   *  can warn "hint is empty" if it wants to. */
+  hint?: string;
+}
+
+const COMMAND_REGEX =
+  /^@feat-(\d+)\s+(diagnose|retry|retry-with-hint(?:\s*:.*)?|mark-done|abandon)\s*$/i;
+
+/**
+ * Parse a dialog message for the `@feat-XXX <command>` shape (D-033).
+ *
+ * Returns a typed `DialogCommand` when the entire message matches one
+ * of the five recognised verbs; `null` otherwise. The intent is for
+ * callers to short-circuit the regular chat submission path; this is
+ * intentionally strict — partial matches ("retry now please" without
+ * `@feat-XXX`) fall through to chat because the verb without a feature
+ * target is ambiguous.
+ */
+export function parseDialogCommand(message: string): DialogCommand | null {
+  const trimmed = message.trim();
+  const m = COMMAND_REGEX.exec(trimmed);
+  if (!m) return null;
+  const featureIdRaw = m[1];
+  const verbRaw = m[2];
+  if (typeof featureIdRaw !== "string" || typeof verbRaw !== "string") {
+    return null;
+  }
+  const featureId = `feat-${featureIdRaw}`;
+  const verbLower = verbRaw.toLowerCase();
+
+  if (verbLower.startsWith("retry-with-hint")) {
+    // The regex captured the entire `retry-with-hint:<text>` chunk as
+    // group 2; split off the hint ourselves. If the colon is missing
+    // we treat the verb as plain `retry` (the regex allowed either
+    // shape to match).
+    const colonIdx = verbRaw.indexOf(":");
+    if (colonIdx < 0) {
+      return { kind: "command", featureId, command: "retry" };
+    }
+    const hint = verbRaw.slice(colonIdx + 1).trim();
+    return {
+      kind: "command",
+      featureId,
+      command: "retry-with-hint",
+      hint,
+    };
+  }
+  return {
+    kind: "command",
+    featureId,
+    command: verbLower as DialogCommandKind,
+  };
 }

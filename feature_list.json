@@ -1275,13 +1275,21 @@
         "On mark-done: server transitions the feature to passing (with a warning that no actual work was done)",
         "Test: type '@feat-003 retry'; assert the feature transitions back to ready and a new run begins"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-038",
         "feat-042"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-043",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1606,8 +1614,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 40,
-    "failing": 14,
+    "passing": 41,
+    "failing": 13,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

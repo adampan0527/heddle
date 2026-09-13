@@ -8,6 +8,10 @@
  *   - `parseMarkerBody` tolerates missing Diff sections, requires both
  *     Cause and Suggestion, and extracts the diff code fence body.
  *   - `mockDiagnoseResponse` produces a usable v0.1 fixture.
+ *   - `parseDialogCommand` (feat-043 / D-033) recognises the five
+ *     `@feat-XXX <command>` shapes and returns a typed parsed object;
+ *     it returns `null` for chat messages, partial mentions, or
+ *     unknown verbs.
  */
 
 import { describe, expect, test } from "vitest";
@@ -15,6 +19,7 @@ import { describe, expect, test } from "vitest";
 import {
   extractDiagnosis,
   mockDiagnoseResponse,
+  parseDialogCommand,
   parseMarkerBody,
 } from "./diagnosis-helpers.ts";
 
@@ -91,5 +96,98 @@ describe("mockDiagnoseResponse", () => {
     expect(resp.diagnosis?.suggestion.length).toBeGreaterThan(0);
     expect(resp.diagnosis?.diff?.length ?? 0).toBeGreaterThan(0);
     expect(resp.text.startsWith("## DIAGNOSIS")).toBe(true);
+  });
+});
+
+describe("parseDialogCommand (feat-043 / D-033)", () => {
+  test("parses `@feat-003 diagnose`", () => {
+    expect(parseDialogCommand("@feat-003 diagnose")).toEqual({
+      kind: "command",
+      featureId: "feat-003",
+      command: "diagnose",
+    });
+  });
+
+  test("parses `@feat-042 retry` (case + whitespace insensitive)", () => {
+    expect(parseDialogCommand("@feat-042 Retry")).toEqual({
+      kind: "command",
+      featureId: "feat-042",
+      command: "retry",
+    });
+    expect(parseDialogCommand("  @feat-042   retry   ")).toEqual({
+      kind: "command",
+      featureId: "feat-042",
+      command: "retry",
+    });
+  });
+
+  test("parses `@feat-042 retry-with-hint:use OpenAI`", () => {
+    expect(
+      parseDialogCommand("@feat-042 retry-with-hint:use OpenAI"),
+    ).toEqual({
+      kind: "command",
+      featureId: "feat-042",
+      command: "retry-with-hint",
+      hint: "use OpenAI",
+    });
+  });
+
+  test("parses `@feat-042 retry-with-hint:` with empty hint", () => {
+    expect(parseDialogCommand("@feat-042 retry-with-hint:")).toEqual({
+      kind: "command",
+      featureId: "feat-042",
+      command: "retry-with-hint",
+      hint: "",
+    });
+  });
+
+  test("trims leading whitespace inside the hint body", () => {
+    expect(
+      parseDialogCommand("@feat-042 retry-with-hint:    please retry"),
+    ).toEqual({
+      kind: "command",
+      featureId: "feat-042",
+      command: "retry-with-hint",
+      hint: "please retry",
+    });
+  });
+
+  test("parses `@feat-042 mark-done`", () => {
+    expect(parseDialogCommand("@feat-042 mark-done")).toEqual({
+      kind: "command",
+      featureId: "feat-042",
+      command: "mark-done",
+    });
+  });
+
+  test("parses `@feat-042 abandon`", () => {
+    expect(parseDialogCommand("@feat-042 abandon")).toEqual({
+      kind: "command",
+      featureId: "feat-042",
+      command: "abandon",
+    });
+  });
+
+  test("returns null for chat messages (no @feat-XXX token)", () => {
+    expect(parseDialogCommand("please retry feat-042")).toBeNull();
+    expect(parseDialogCommand("hello world")).toBeNull();
+  });
+
+  test("returns null for partial mentions", () => {
+    expect(parseDialogCommand("@feat-042")).toBeNull();
+    expect(parseDialogCommand("@feat-042 ")).toBeNull();
+  });
+
+  test("returns null for unknown verbs", () => {
+    expect(parseDialogCommand("@feat-042 ship-it")).toBeNull();
+    expect(parseDialogCommand("@feat-042 delete")).toBeNull();
+  });
+
+  test("returns null when the message has trailing prose", () => {
+    // The parser is strict — chat-after-command is treated as chat.
+    expect(parseDialogCommand("@feat-042 retry now")).toBeNull();
+    expect(
+      parseDialogCommand("@feat-042 mark-done please"),
+    ).toBeNull();
   });
 });

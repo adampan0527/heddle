@@ -31,16 +31,53 @@ vi.mock("../lib/api/dialog.js", () => ({
 
 vi.mock("../lib/api/features.js", () => ({
   useFeatures: vi.fn(),
+  // feat-043: dialog commands route through these two mutations; the
+  // default mock returns an idle, never-resolving hook so chat-only
+  // tests never accidentally invoke them.
+  useRetryFeature: vi.fn(),
+  useTransitionFeature: vi.fn(),
 }));
 
 import { useSubmitDialog } from "../lib/api/dialog.js";
-import { useFeatures } from "../lib/api/features.js";
+import {
+  useFeatures,
+  useRetryFeature,
+  useTransitionFeature,
+} from "../lib/api/features.js";
 
 const useSubmitDialogMock = vi.mocked(useSubmitDialog);
 const useFeaturesMock = vi.mocked(useFeatures);
+const useRetryFeatureMock = vi.mocked(useRetryFeature);
+const useTransitionFeatureMock = vi.mocked(useTransitionFeature);
 
 interface MockApi {
   mutateAsync: ReturnType<typeof vi.fn>;
+}
+
+/** Build a TanStack-shaped idle hook result for the dialog-command
+ *  mutations. Dialog tests that don't care about commands share one
+ *  fixture; command-specific tests can replace via the override. */
+function idleMutation(): ReturnType<typeof useRetryFeature> {
+  return {
+    mutateAsync: vi.fn(async () => {
+      throw new Error("command mutation not expected");
+    }),
+    mutate: vi.fn(),
+    reset: vi.fn(),
+    variables: undefined,
+    context: undefined,
+    data: undefined,
+    error: null,
+    failureCount: 0,
+    failureReason: null,
+    isError: false,
+    isIdle: true,
+    isPaused: false,
+    isPending: false,
+    isSuccess: false,
+    status: "idle",
+    submittedAt: 0,
+  } as unknown as ReturnType<typeof useRetryFeature>;
 }
 
 function setupMock(opts: {
@@ -80,6 +117,10 @@ function setupMock(opts: {
     isError: false,
     error: null,
   } as unknown as ReturnType<typeof useFeatures>);
+  useRetryFeatureMock.mockReturnValue(idleMutation());
+  useTransitionFeatureMock.mockReturnValue(
+    idleMutation() as unknown as ReturnType<typeof useTransitionFeature>,
+  );
   return { mutateAsync };
 }
 
@@ -256,6 +297,138 @@ describe("<Dialog />", () => {
       expect(
         screen.getByTestId("dialog-entry-assistant"),
       ).toHaveTextContent("plain reply");
+    });
+  });
+
+  // ----- feat-043 / D-033: failure-handling dialog commands -----
+
+  test("`@feat-XXX retry` routes to useRetryFeature (no dialog mutation)", async () => {
+    const api = setupMock({ resolve: { kind: "chat", text: "" } });
+    const retryMutate = vi.fn(async () => ({
+      project_id: "proj-1",
+      feature_id: "feat-042",
+      feature: {} as never,
+    }));
+    useRetryFeatureMock.mockReturnValue({
+      ...idleMutation(),
+      mutateAsync: retryMutate,
+    } as unknown as ReturnType<typeof useRetryFeature>);
+    renderWithClient(<Dialog projectId="proj-1" />);
+    const textarea = screen.getByTestId("dialog-textarea");
+    fireEvent.change(textarea, { target: { value: "@feat-042 retry" } });
+    fireEvent.click(screen.getByTestId("dialog-send"));
+    await waitFor(() => {
+      expect(retryMutate).toHaveBeenCalledWith({ featureId: "feat-042" });
+    });
+    // The chat mutation must not run when a command short-circuits.
+    expect(api.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  test("`@feat-XXX retry-with-hint:<text>` forwards the hint verbatim", async () => {
+    const api = setupMock({ resolve: { kind: "chat", text: "" } });
+    const retryMutate = vi.fn(async () => ({
+      project_id: "proj-1",
+      feature_id: "feat-042",
+      feature: {} as never,
+    }));
+    useRetryFeatureMock.mockReturnValue({
+      ...idleMutation(),
+      mutateAsync: retryMutate,
+    } as unknown as ReturnType<typeof useRetryFeature>);
+    renderWithClient(<Dialog projectId="proj-1" />);
+    const textarea = screen.getByTestId("dialog-textarea");
+    fireEvent.change(textarea, {
+      target: { value: "@feat-042 retry-with-hint:use OpenAI" },
+    });
+    fireEvent.click(screen.getByTestId("dialog-send"));
+    await waitFor(() => {
+      expect(retryMutate).toHaveBeenCalledWith({
+        featureId: "feat-042",
+        hint: "use OpenAI",
+      });
+    });
+    expect(api.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  test("`@feat-XXX mark-done` routes to transitionMutation action mark-done", async () => {
+    const api = setupMock({ resolve: { kind: "chat", text: "" } });
+    const transitionMutate = vi.fn(async () => ({
+      project_id: "proj-1",
+      feature_id: "feat-042",
+      action: "mark-done",
+      feature: {} as never,
+    }));
+    useTransitionFeatureMock.mockReturnValue({
+      ...idleMutation(),
+      mutateAsync: transitionMutate,
+    } as unknown as ReturnType<typeof useTransitionFeature>);
+    renderWithClient(<Dialog projectId="proj-1" />);
+    const textarea = screen.getByTestId("dialog-textarea");
+    fireEvent.change(textarea, { target: { value: "@feat-042 mark-done" } });
+    fireEvent.click(screen.getByTestId("dialog-send"));
+    await waitFor(() => {
+      expect(transitionMutate).toHaveBeenCalledWith({
+        featureId: "feat-042",
+        action: "mark-done",
+      });
+    });
+    expect(api.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  test("`@feat-XXX abandon` routes to transitionMutation action abandon", async () => {
+    const api = setupMock({ resolve: { kind: "chat", text: "" } });
+    const transitionMutate = vi.fn(async () => ({
+      project_id: "proj-1",
+      feature_id: "feat-042",
+      action: "abandon",
+      feature: {} as never,
+    }));
+    useTransitionFeatureMock.mockReturnValue({
+      ...idleMutation(),
+      mutateAsync: transitionMutate,
+    } as unknown as ReturnType<typeof useTransitionFeature>);
+    renderWithClient(<Dialog projectId="proj-1" />);
+    const textarea = screen.getByTestId("dialog-textarea");
+    fireEvent.change(textarea, { target: { value: "@feat-042 abandon" } });
+    fireEvent.click(screen.getByTestId("dialog-send"));
+    await waitFor(() => {
+      expect(transitionMutate).toHaveBeenCalledWith({
+        featureId: "feat-042",
+        action: "abandon",
+      });
+    });
+    expect(api.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  test("`@feat-XXX diagnose` renders a DiagnosisReport card", async () => {
+    const api = setupMock({ resolve: { kind: "chat", text: "" } });
+    renderWithClient(<Dialog projectId="proj-1" />);
+    const textarea = screen.getByTestId("dialog-textarea");
+    fireEvent.change(textarea, { target: { value: "@feat-042 diagnose" } });
+    fireEvent.click(screen.getByTestId("dialog-send"));
+    await waitFor(() => {
+      expect(screen.getByTestId("diagnosis-report")).toBeInTheDocument();
+    });
+    expect(api.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  test("a command failure surfaces as a transcript error entry", async () => {
+    setupMock({ resolve: { kind: "chat", text: "" } });
+    const retryMutate = vi.fn(async () => {
+      throw new Error("daemon offline");
+    });
+    useRetryFeatureMock.mockReturnValue({
+      ...idleMutation(),
+      mutateAsync: retryMutate,
+    } as unknown as ReturnType<typeof useRetryFeature>);
+    renderWithClient(<Dialog projectId="proj-1" />);
+    const textarea = screen.getByTestId("dialog-textarea");
+    fireEvent.change(textarea, { target: { value: "@feat-042 retry" } });
+    fireEvent.click(screen.getByTestId("dialog-send"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("dialog-entry-error"),
+      ).toHaveTextContent(/daemon offline/);
     });
   });
 });
