@@ -85,6 +85,7 @@ export async function buildServer(
     root: webDist,
     prefix: "/",
     decorateReply: false,
+    index: ["index.html"],
   });
 
   const { registerProjectRoutes } = await import("./routes/projects.js");
