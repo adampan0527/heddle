@@ -1465,14 +1465,22 @@
         "Click 'Confirm all'; assert new feature appears in ready column",
         "Drag the new feature to in_progress; with HEDDLE_FAKE_LLM=1 and a fixture that completes in 2 steps, assert the feature transitions to passing"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "medium",
       "depends_on": [
         "feat-040",
         "feat-045",
         "feat-046"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-049",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1654,8 +1662,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 46,
-    "failing": 8,
+    "passing": 47,
+    "failing": 7,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,
