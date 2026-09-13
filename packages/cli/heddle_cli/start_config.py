@@ -32,7 +32,15 @@ DEFAULT_NODE_HOST: str = "127.0.0.1"
 #: Default backend port (matches ``packages/node/src/server.ts``).
 DEFAULT_NODE_PORT: int = 5174
 #: Default frontend URL the browser is opened to.
-DEFAULT_FRONTEND_URL: str = "http://localhost:5173"
+#: The Node backend (feat-026) serves BOTH the REST/WS API at
+#: ``/api/*`` and ``/ws`` AND the static SPA bundle at every other
+#: path (feat-032 web build → packages/web/dist, served via
+#: @fastify/static with ``index: ["index.html"]``). So the browser
+#: URL points at the SAME port as the backend, not a separate Vite
+#: dev server. The 5173 default from earlier drafts predated the
+#: ``packages/node serve web dist`` wiring and was a holdover from
+#: the dev-mode (pnpm --filter web dev) layout.
+DEFAULT_FRONTEND_URL: str = f"http://localhost:{DEFAULT_NODE_PORT}"
 #: Default health endpoint polled until the backend is reachable.
 DEFAULT_HEALTH_URL: str = f"http://{DEFAULT_NODE_HOST}:{DEFAULT_NODE_PORT}/"
 
