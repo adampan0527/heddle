@@ -21,9 +21,48 @@ def cli() -> None:
 
 
 @cli.command()
-def start() -> None:
-    """Start the full stack (Node.js backend + Python daemon). Not implemented in v0.1 stub."""
-    click.echo("heddle start: not yet implemented (feat-050)")
+@click.option(
+    "--host",
+    default=None,
+    help="Node.js backend bind host (default 127.0.0.1). Loopback only.",
+)
+@click.option(
+    "--port",
+    type=int,
+    default=None,
+    help="Node.js backend bind port (default 5174).",
+)
+@click.option(
+    "--frontend-url",
+    default=None,
+    help="URL the browser is opened to after the backend is ready.",
+)
+def start(
+    host: str | None,
+    port: int | None,
+    frontend_url: str | None,
+) -> None:
+    """Start the full stack (Node.js backend + Python daemon).
+
+    Spawns ``node packages/node/dist/main.js`` (which supervises the
+    Python daemon over loopback WS — feat-027) and, once the backend
+    has bound its HTTP port, opens the default browser to
+    ``http://localhost:5173``. Refuses to start when ``HEDDLE_NODE_HOST``
+    or ``HEDDLE_BIND`` points at a non-loopback address (D-037).
+    """
+    # Forward explicit Click flags into the pure ``start_cmd`` via the
+    # argv list. We keep ``start_cmd`` Click-free so unit tests can
+    # exercise every branch without invoking the CLI group.
+    from .start import start_cmd
+
+    argv: list[str] = []
+    if host is not None:
+        argv += ["--host", host]
+    if port is not None:
+        argv += ["--port", str(port)]
+    if frontend_url is not None:
+        argv += ["--frontend-url", frontend_url]
+    raise SystemExit(start_cmd(argv))
 
 
 @cli.command()

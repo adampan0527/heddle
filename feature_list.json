@@ -1499,7 +1499,7 @@
         "On non-loopback binding request, clear error and non-zero exit",
         "Test: run heddle start in a temp project; assert browser opens, server is reachable, daemon is alive"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-027",
@@ -1507,7 +1507,15 @@
         "feat-029",
         "feat-030"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-050",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1662,8 +1670,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 47,
-    "failing": 7,
+    "passing": 48,
+    "failing": 6,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,
