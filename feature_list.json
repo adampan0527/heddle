@@ -1178,12 +1178,20 @@
         "Click 'Confirm all (N)' button at the bottom of the tray; calls /api/confirm-drafts with the kept card ids; on success, tray clears",
         "Test: type 'add OAuth login'; assert draft tray shows 1-3 cards; click 'Confirm all'; assert the kanban now has the new feature"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-038"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-040",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1582,8 +1590,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 37,
-    "failing": 17,
+    "passing": 38,
+    "failing": 16,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

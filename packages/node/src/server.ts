@@ -90,6 +90,9 @@ export async function buildServer(
   const { registerProjectRoutes } = await import("./routes/projects.js");
   const { registerFeatureRoutes } = await import("./routes/features.js");
   const { registerDialogRoutes } = await import("./routes/dialog.js");
+  // feat-040: draft-tray confirmation route. Currently a 501 stub —
+  // see the file's header for the planned `forwardOrFail` swap.
+  const { registerDraftRoutes } = await import("./routes/drafts.js");
 
   // The plugin casts are needed because Fastify v4's default
   // generic route registration loses the TypeBox provider through
@@ -107,6 +110,11 @@ export async function buildServer(
   await app.register(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     registerDialogRoutes as any,
+    { supervisor: options.supervisor },
+  );
+  await app.register(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerDraftRoutes as any,
     { supervisor: options.supervisor },
   );
 
@@ -134,7 +142,7 @@ export async function buildServer(
   logger.info(
     "node",
     "build_server_ready",
-    "buildServer assembled with TypeBox validation + 3 route plugins",
+    "buildServer assembled with TypeBox validation + 4 route plugins",
     { has_supervisor: options.supervisor !== undefined },
   );
   return app as FastifyInstance;

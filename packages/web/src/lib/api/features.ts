@@ -20,7 +20,7 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import type { ApiErr, ApiOk, Feature } from "@heddle/shared";
+import type { ApiErr, ApiOk, DraftCard, Feature } from "@heddle/shared";
 
 import { apiFetch } from "../query-client.js";
 import { unwrap } from "./errors.js";
@@ -103,6 +103,49 @@ export function useStartFeature(
       if (c?.prev) {
         qc.setQueryData(featuresKey(projectId), c.prev);
       }
+    },
+    onSettled: () => {
+      if (!projectId) return;
+      void qc.invalidateQueries({ queryKey: featuresKey(projectId) });
+    },
+  });
+}
+
+/**
+ * feat-040: confirm a draft tray — POST /api/projects/:id/drafts/confirm.
+ *
+ * The dialog's auto-decomposition returns a list of draft cards; the
+ * user keeps the ones they want and the rest get dropped on the next
+ * decomposition round. When they click "Confirm all (N)" the kept
+ * cards are POSTed to the new confirm endpoint, the daemon persists
+ * each as a `feat-XXX` row in `feature_list.json`, and we invalidate
+ * the features query so the kanban refetches the new rows.
+ */
+export interface ConfirmDraftsBody {
+  drafts: DraftCard[];
+}
+
+export interface ConfirmDraftsData {
+  project_id: string;
+  /** The new `feat-XXX` ids assigned by the daemon. */
+  feature_ids: string[];
+}
+
+export function useConfirmDrafts(
+  projectId: string | null,
+): UseMutationResult<ConfirmDraftsData, Error, ConfirmDraftsBody> {
+  const qc = useQueryClient();
+  return useMutation<ConfirmDraftsData, Error, ConfirmDraftsBody>({
+    mutationFn: async ({ drafts }) => {
+      if (!projectId) throw new Error("no active project");
+      const res = await apiFetch(
+        `/api/projects/${projectId}/drafts/confirm`,
+        { method: "POST", body: JSON.stringify({ drafts }) },
+      );
+      const parsed = (await res.json()) as
+        | ApiOk<ConfirmDraftsData>
+        | ApiErr;
+      return unwrap(parsed, res.status);
     },
     onSettled: () => {
       if (!projectId) return;

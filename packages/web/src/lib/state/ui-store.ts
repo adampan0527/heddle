@@ -12,17 +12,45 @@
  * choice, not pure ephemeral state. Only `activeProjectId` is
  * persisted; future drag/dialog state will stay ephemeral.
  *
+ * feat-040 adds the draft tray state. Drafts are returned by the
+ * daemon's dialog handler when `kind === "work"` and persist across
+ * page reloads so a user who closes their browser while reviewing
+ * decomposition suggestions comes back to the same set. The tray's
+ * per-card "keep" selection is also persisted.
+ *
  * Storage choice: `localStorage` (synchronous, no quota issues for a
- * single string). Key `heddle.ui.activeProjectId` is namespaced so a
- * host page that also runs the heddle client (rare) cannot collide.
+ * single string). Key `heddle.ui.state` is namespaced so a host page
+ * that also runs the heddle client (rare) cannot collide.
  */
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import type { DraftCard } from "@heddle/shared";
 
 export interface UiState {
   activeProjectId: string | null;
   setActiveProjectId: (id: string | null) => void;
+  /** Drafts keyed by their temp id (e.g. "temp-001"). feat-040. */
+  drafts: Record<string, DraftCard>;
+  /** Ids of drafts the user has chosen to keep (default = all unchecked). */
+  selectedIds: string[];
+  /** Replace the draft tray with the daemon's latest decomposition. */
+  setDrafts: (drafts: DraftCard[]) => void;
+  /** Toggle a single draft's "keep" state. */
+  toggleDraft: (id: string) => void;
+  /** Drop the tray entirely (Cancel or post-confirm). */
+  clearDrafts: () => void;
+}
+
+/**
+ * `Set` is not JSON-serialisable so we keep the kept-draft list as
+ * a string array and surface it as a Set at the call site.
+ */
+function emptyDrafts(): Record<string, DraftCard> {
+  return {};
+}
+function emptySelected(): string[] {
+  return [];
 }
 
 export const useUiStore = create<UiState>()(
@@ -30,11 +58,43 @@ export const useUiStore = create<UiState>()(
     (set) => ({
       activeProjectId: null,
       setActiveProjectId: (id) => set({ activeProjectId: id }),
+      drafts: emptyDrafts(),
+      selectedIds: emptySelected(),
+      setDrafts: (drafts) =>
+        set(() => {
+          const next: Record<string, DraftCard> = {};
+          const selected: string[] = [];
+          for (const d of drafts) {
+            next[d.id] = d;
+            // Default: every returned card is unchecked. The user
+            // picks which to keep; unchecked cards will be removed
+            // by the next decomposition round.
+            if (!selected.includes(d.id)) selected.push(d.id);
+          }
+          // Default selected state: empty (kept list) — user opts in
+          // by clicking the checkbox. This matches the spec's
+          // "default unchecked = may be removed by next decomposition".
+          return { drafts: next, selectedIds: [] };
+        }),
+      toggleDraft: (id) =>
+        set((s) => {
+          const has = s.selectedIds.includes(id);
+          return {
+            selectedIds: has
+              ? s.selectedIds.filter((x) => x !== id)
+              : [...s.selectedIds, id],
+          };
+        }),
+      clearDrafts: () => set({ drafts: emptyDrafts(), selectedIds: emptySelected() }),
     }),
     {
-      name: "heddle.ui.activeProjectId",
+      name: "heddle.ui.state",
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({ activeProjectId: state.activeProjectId }),
+      partialize: (state) => ({
+        activeProjectId: state.activeProjectId,
+        drafts: state.drafts,
+        selectedIds: state.selectedIds,
+      }),
       version: 1,
     },
   ),

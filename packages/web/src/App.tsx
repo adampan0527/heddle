@@ -15,6 +15,7 @@ import { useEffect } from "react";
 
 import { ConnectionStatus } from "./components/ConnectionStatus.tsx";
 import { Dialog } from "./components/Dialog.tsx";
+import { DraftTray } from "./components/DraftTray.tsx";
 import { Kanban } from "./components/Kanban.tsx";
 import { ProjectSwitcher } from "./components/ProjectSwitcher.tsx";
 import { getDefaultWsClient } from "./lib/ws-client.ts";
@@ -41,6 +42,7 @@ export default function App(): React.ReactElement {
       </header>
 
       <main className="flex flex-1 flex-col gap-4 p-6">
+        <DraftTray projectId={activeProjectId} />
         <Kanban projectId={activeProjectId} />
         <Dialog projectId={activeProjectId} />
       </main>

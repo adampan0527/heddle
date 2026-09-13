@@ -29,6 +29,7 @@ import type { DialogResponse, Feature } from "@heddle/shared";
 
 import { useSubmitDialog } from "../lib/api/dialog.ts";
 import { useFeatures } from "../lib/api/features.ts";
+import { useUiStore } from "../lib/state/ui-store.ts";
 import {
   MentionAutocomplete,
   clampSelection,
@@ -71,6 +72,7 @@ let idCounter = 0;
 export function Dialog({ projectId }: DialogProps): React.ReactElement {
   const submit = useSubmitDialog(projectId);
   const featuresQuery = useFeatures(projectId);
+  const setDrafts = useUiStore((s) => s.setDrafts);
   const [draft, setDraft] = useState<string>("");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
@@ -143,6 +145,13 @@ export function Dialog({ projectId }: DialogProps): React.ReactElement {
     try {
       const resp: DialogResponse = await submit.mutateAsync({ message });
       appendEntry({ role: "assistant", text: resp.text });
+      // feat-040: when the daemon's classifier returns work-mode
+      // draft cards, refresh the tray. The user's previous selection
+      // is dropped (a new decomposition round supersedes it); cards
+      // can be re-toggled by id on the tray.
+      if (resp.kind === "work" && Array.isArray(resp.drafts)) {
+        setDrafts(resp.drafts);
+      }
     } catch (err) {
       appendEntry({
         role: "error",
