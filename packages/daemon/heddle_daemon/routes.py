@@ -57,8 +57,10 @@ from typing import Any, Optional
 
 from heddle_common import logging as _logging
 from heddle_common.configs_io import Config, default_configs_path
+from heddle_common.dag_validation import validate_drafts
 from heddle_common.feature_list_io import (
     SchemaVersionError,
+    add as _fl_add,
     fail as _fl_fail,
     load as _fl_load,
     mark_blocked as _fl_mark_blocked,
@@ -329,6 +331,9 @@ class RouteHandler:
             if env.type == "dialog_turn":
                 data = await self._dialog_turn(env.extra)
                 return self._ok_response(req_id, env.type, data)
+            if env.type == "drafts_confirm":
+                data = self._drafts_confirm(env.extra)
+                return self._ok_response(req_id, env.type, data)
             # feat-030: per-feature command handlers. Each one is a
             # wire-shape stub right now (validates input + emits a
             # progress event before the terminal response); feat-031
@@ -565,6 +570,99 @@ class RouteHandler:
             "intent": intent,
             "text": text,
             "drafts": payload_drafts,
+        }
+
+    # ----- feat-046: drafts_confirm -----
+
+    def _drafts_confirm(self, extras: dict[str, Any]) -> dict[str, Any]:
+        """Validate + commit a batch of draft cards (feat-046).
+
+        Behaviour (D-003 / D-004 / D-027):
+
+          1. Validate every draft's ``depends_on`` references an
+             existing feature or a sibling draft in the same batch.
+             Drafts referencing an unknown id are rejected with
+             ``code="invalid_input"`` and a list of per-draft errors.
+          2. Detect cycles in the union graph (existing features +
+             drafts being confirmed). Cycles reject the whole batch.
+          3. On success, persist each draft as a new feature row via
+             ``feature_list_io.add``. Status is decided by DAG
+             topology: ``pending`` when every dep is an existing
+             ``passing`` feature, otherwise ``blocked``.
+
+        The handler is synchronous (``def`` not ``async def``) because
+        ``feature_list_io.add`` is a file-mutating call with no I/O
+        concurrency worth awaiting; ``dispatch_envelope`` already
+        handles both shapes via the ``await``/no-await split.
+
+        Payload: ``{project_id, drafts: [DraftCard, ...]}``.
+        Response: ``{project_id, added: [Feature, ...]}``.
+        """
+        project_id = extras.get("project_id")
+        drafts = extras.get("drafts")
+        if not isinstance(project_id, str) or not project_id:
+            raise RoutesError("project_id must be a non-empty string")
+        if not isinstance(drafts, list):
+            raise RoutesError("drafts must be a list")
+        project = self._lookup_project(project_id)
+        path = self.feature_list_path_for(project)
+        # Load the current feature list once so validate_drafts can
+        # resolve depends_on against existing ids and decide each
+        # draft's initial status from the union graph topology.
+        data = _safe_fail_call(lambda: _fl_load(path))
+        existing_features = list(data.get("features", []))
+        proposed, errors = validate_drafts(drafts, existing_features)
+        if errors:
+            # Stable wire contract: code="invalid_input" with the
+            # per-draft errors attached so the Web UI can highlight
+            # which card(s) the user must fix. The route does NOT
+            # mutate feature_list.json on this path.
+            raise RoutesError(
+                f"drafts rejected: {'; '.join(errors)}",
+                code="invalid_input",
+            )
+        added_rows: list[dict[str, Any]] = []
+        for row in proposed:
+            # ``_fl_add`` validates + persists one feature row. We
+            # already ran ``validate_drafts`` upstream, so the
+            # ``fail()`` SystemExit branch only fires on a contract
+            # mismatch we did not anticipate (e.g. an existing
+            # feature with the same id snuck in between load() and
+            # add()); that lands as a RoutesError via _safe_fail_call.
+            depends_csv = ",".join(row.get("depends_on") or [])
+            _safe_fail_call(
+                lambda r=row, d=depends_csv: _fl_add(
+                    path,
+                    feature_id=r["id"],
+                    category=r.get("category") or "functional",
+                    description=r.get("description") or "",
+                    status=r.get("status") or "pending",
+                    priority=r.get("priority") or "medium",
+                    step=list(r.get("steps") or []),
+                    depends_on=d,
+                    kind=r.get("kind") or "feature",
+                )
+            )
+            _logging.info(
+                component="routes",
+                event="draft_confirmed",
+                msg=f"confirmed draft {row['id']} as {row.get('status')}",
+                project_id=project_id,
+                feature_id=row["id"],
+                status=row.get("status"),
+            )
+            added_rows.append(row)
+        # Reload to capture the on-disk rows (status, attempts[], etc.)
+        post = _safe_fail_call(lambda: _fl_load(path))
+        added_ids = {r["id"] for r in added_rows}
+        added_features = [
+            f for f in post.get("features", [])
+            if isinstance(f, dict) and f.get("id") in added_ids
+        ]
+        return {
+            "project_id": project_id,
+            "added": added_features,
+            "count": len(added_features),
         }
 
     # ----- feat-030 per-feature command handlers -----

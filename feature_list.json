@@ -1371,13 +1371,21 @@
         "On valid: for each new feature, compute initial status from DAG topology: status=pending if all deps=passing, else status=blocked",
         "Test: submit drafts with depends_on referring to a non-existent feat-XXX; assert validation rejects"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-010",
         "feat-045"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-046",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1630,8 +1638,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 43,
-    "failing": 11,
+    "passing": 44,
+    "failing": 10,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

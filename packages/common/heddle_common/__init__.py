@@ -113,3 +113,17 @@ from .project_cascade import (  # noqa: F401
     default_logs_dir,
     remove_project_with_cascade,
 )
+
+# Re-export the dag_validation API (feat-046 / D-003, D-004, D-027) so
+# the daemon's drafts-confirm route and the Web UI's draft tray can
+# import the pure function without reaching into the submodule. Both
+# the daemon and any future CLI subcommand call ``validate_drafts``
+# before writing draft features to ``feature_list.json``.
+from .dag_validation import (  # noqa: F401
+    DEFAULT_CATEGORY,
+    DEFAULT_PRIORITY,
+    STATUS_BLOCKED,
+    STATUS_PENDING,
+    UNKNOWN_DEP_PREFIX,
+    validate_drafts,
+)
