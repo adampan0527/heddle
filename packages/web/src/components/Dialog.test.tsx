@@ -29,6 +29,12 @@ vi.mock("../lib/api/dialog.js", () => ({
   useSubmitDialog: vi.fn(),
 }));
 
+const feat054Hooks = vi.hoisted(() =>
+  ["useSplitFeature", "useMergeFeatures", "useEditFeature", "useReprioritizeFeature", "useUpdateDeps"].map(
+    () => vi.fn(),
+  ),
+);
+
 vi.mock("../lib/api/features.js", () => ({
   useFeatures: vi.fn(),
   // feat-043: dialog commands route through these two mutations; the
@@ -36,6 +42,15 @@ vi.mock("../lib/api/features.js", () => ({
   // tests never accidentally invoke them.
   useRetryFeature: vi.fn(),
   useTransitionFeature: vi.fn(),
+  // feat-054 / D-054: post-confirm modification mutations. Same
+  // idle default; command-specific tests opt in by overriding the
+  // mock return value. The mock objects themselves are hoisted via
+  // `feat054Hooks` so setupMock can configure their return.
+  useSplitFeature: feat054Hooks[0],
+  useMergeFeatures: feat054Hooks[1],
+  useEditFeature: feat054Hooks[2],
+  useReprioritizeFeature: feat054Hooks[3],
+  useUpdateDeps: feat054Hooks[4],
 }));
 
 import { useSubmitDialog } from "../lib/api/dialog.js";
@@ -49,6 +64,10 @@ const useSubmitDialogMock = vi.mocked(useSubmitDialog);
 const useFeaturesMock = vi.mocked(useFeatures);
 const useRetryFeatureMock = vi.mocked(useRetryFeature);
 const useTransitionFeatureMock = vi.mocked(useTransitionFeature);
+// feat-054: dialog reads `isPending` on the five new mutation hooks.
+// We don't import them directly here — the vi.mock factory above
+// already returns vi.fn() — but we cast + supply idle defaults so
+// the dialog's `sending` calculation always sees `false`.
 
 interface MockApi {
   mutateAsync: ReturnType<typeof vi.fn>;
@@ -121,6 +140,14 @@ function setupMock(opts: {
   useTransitionFeatureMock.mockReturnValue(
     idleMutation() as unknown as ReturnType<typeof useTransitionFeature>,
   );
+  // feat-054: the five new mutation hooks default to idle so the
+  // dialog's `sending` boolean stays `false` until a test overrides
+  // the mock return. We use vi.hoisted mock refs so the
+  // vi.mock factory below can return the same fn()s and we can
+  // configure them in setupMock.
+  for (const mockFn of feat054Hooks) {
+    mockFn.mockReturnValue(idleMutation() as unknown as ReturnType<typeof useRetryFeature>);
+  }
   return { mutateAsync };
 }
 

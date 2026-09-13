@@ -29,8 +29,18 @@ import type {
   ApiErr,
   ApiOk,
   DraftCard,
+  EditFeatureBody,
+  EditFeatureData,
   Feature,
+  MergeFeatureBody,
+  MergeFeatureData,
+  ReprioritizeFeatureBody,
+  ReprioritizeFeatureData,
+  SplitFeatureBody,
+  SplitFeatureData,
   TransitionAction,
+  UpdateDepsBody,
+  UpdateDepsData,
 } from "@heddle/shared";
 
 import { apiFetch } from "../query-client.js";
@@ -264,6 +274,154 @@ export function useTransitionFeature(
       );
       const parsed = (await res.json()) as
         | ApiOk<TransitionFeatureData>
+        | ApiErr;
+      return unwrap(parsed, res.status);
+    },
+    onSettled: () => {
+      if (!projectId) return;
+      void qc.invalidateQueries({ queryKey: featuresKey(projectId) });
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// feat-054 / D-054: post-confirm feature modification.
+//
+// Five new mutations power the `@feat-XXX split / merge / rename /
+// set priority / depend on / remove dep` shortcuts. Each mutation
+// invalidates the features query on settle so the kanban reflects
+// the new state (including hiding superseded rows in the Archive
+// lane) without a manual refresh. The destructive ops (split /
+// merge / remove-dep) include a `diff` field in their success
+// payload that the dialog UI renders before invoking the call.
+// ---------------------------------------------------------------------------
+
+/** POST /api/projects/:id/features/:fid/split */
+export function useSplitFeature(
+  projectId: string | null,
+): UseMutationResult<SplitFeatureData, Error, SplitFeatureBody> {
+  const qc = useQueryClient();
+  return useMutation<SplitFeatureData, Error, SplitFeatureBody>({
+    mutationFn: async ({ featureId, new_features }) => {
+      if (!projectId) throw new Error("no active project");
+      const res = await apiFetch(
+        `/api/projects/${projectId}/features/${featureId}/split`,
+        { method: "POST", body: JSON.stringify({ new_features }) },
+      );
+      const parsed = (await res.json()) as
+        | ApiOk<SplitFeatureData>
+        | ApiErr;
+      return unwrap(parsed, res.status);
+    },
+    onSettled: () => {
+      if (!projectId) return;
+      void qc.invalidateQueries({ queryKey: featuresKey(projectId) });
+    },
+  });
+}
+
+/** POST /api/projects/:id/features/merge */
+export function useMergeFeatures(
+  projectId: string | null,
+): UseMutationResult<MergeFeatureData, Error, MergeFeatureBody> {
+  const qc = useQueryClient();
+  return useMutation<MergeFeatureData, Error, MergeFeatureBody>({
+    mutationFn: async ({ source_ids, target }) => {
+      if (!projectId) throw new Error("no active project");
+      const res = await apiFetch(
+        `/api/projects/${projectId}/features/merge`,
+        { method: "POST", body: JSON.stringify({ source_ids, target }) },
+      );
+      const parsed = (await res.json()) as
+        | ApiOk<MergeFeatureData>
+        | ApiErr;
+      return unwrap(parsed, res.status);
+    },
+    onSettled: () => {
+      if (!projectId) return;
+      void qc.invalidateQueries({ queryKey: featuresKey(projectId) });
+    },
+  });
+}
+
+/** PATCH /api/projects/:id/features/:fid */
+export function useEditFeature(
+  projectId: string | null,
+): UseMutationResult<EditFeatureData, Error, EditFeatureBody> {
+  const qc = useQueryClient();
+  return useMutation<EditFeatureData, Error, EditFeatureBody>({
+    mutationFn: async ({ featureId, title, description, steps, category }) => {
+      if (!projectId) throw new Error("no active project");
+      const body: Record<string, unknown> = {};
+      if (title !== undefined) body.title = title;
+      if (description !== undefined) body.description = description;
+      if (steps !== undefined) body.steps = steps;
+      if (category !== undefined) body.category = category;
+      const res = await apiFetch(
+        `/api/projects/${projectId}/features/${featureId}`,
+        { method: "PATCH", body: JSON.stringify(body) },
+      );
+      const parsed = (await res.json()) as
+        | ApiOk<EditFeatureData>
+        | ApiErr;
+      return unwrap(parsed, res.status);
+    },
+    onSettled: () => {
+      if (!projectId) return;
+      void qc.invalidateQueries({ queryKey: featuresKey(projectId) });
+    },
+  });
+}
+
+/** PATCH /api/projects/:id/features/:fid/priority */
+export function useReprioritizeFeature(
+  projectId: string | null,
+): UseMutationResult<
+  ReprioritizeFeatureData,
+  Error,
+  ReprioritizeFeatureBody
+> {
+  const qc = useQueryClient();
+  return useMutation<
+    ReprioritizeFeatureData,
+    Error,
+    ReprioritizeFeatureBody
+  >({
+    mutationFn: async ({ featureId, priority }) => {
+      if (!projectId) throw new Error("no active project");
+      const res = await apiFetch(
+        `/api/projects/${projectId}/features/${featureId}/priority`,
+        { method: "PATCH", body: JSON.stringify({ priority }) },
+      );
+      const parsed = (await res.json()) as
+        | ApiOk<ReprioritizeFeatureData>
+        | ApiErr;
+      return unwrap(parsed, res.status);
+    },
+    onSettled: () => {
+      if (!projectId) return;
+      void qc.invalidateQueries({ queryKey: featuresKey(projectId) });
+    },
+  });
+}
+
+/** POST /api/projects/:id/features/:fid/deps */
+export function useUpdateDeps(
+  projectId: string | null,
+): UseMutationResult<UpdateDepsData, Error, UpdateDepsBody> {
+  const qc = useQueryClient();
+  return useMutation<UpdateDepsData, Error, UpdateDepsBody>({
+    mutationFn: async ({ featureId, add, remove }) => {
+      if (!projectId) throw new Error("no active project");
+      const body: Record<string, unknown> = {};
+      if (add !== undefined) body.add = add;
+      if (remove !== undefined) body.remove = remove;
+      const res = await apiFetch(
+        `/api/projects/${projectId}/features/${featureId}/deps`,
+        { method: "POST", body: JSON.stringify(body) },
+      );
+      const parsed = (await res.json()) as
+        | ApiOk<UpdateDepsData>
         | ApiErr;
       return unwrap(parsed, res.status);
     },

@@ -755,3 +755,492 @@ def set_steps(
     feature["steps"] = steps
     recompute_metadata(data)
     save(path, data)
+
+
+# ---------- mutations: post-confirm feature modification (feat-054 / D-054) ----------
+#
+# Six new ops let the user modify a confirmed feature in place via
+# dialog commands. The non-destructive ops (`edit`, `set_priority`,
+# `add_dep`, `remove_dep`) mutate a single feature's row. The
+# destructive ops (`split`, `merge`) add new feature rows AND mark
+# the source(s) as superseded by the new target(s), so the source
+# hides from the main kanban (per D-054). Each destructive op also
+# builds a `diff` object describing the before/after state — the
+# dialog UI shows the diff in a confirmation card before invoking
+# the mutation (D-054: "destructive ops MUST show diff before
+# execution").
+#
+# ID assignment policy (split only):
+#   The first new feature reuses a caller-supplied `id`; subsequent
+#   siblings get the parent id + "-<index>" suffix. The daemon-side
+#   caller is responsible for picking ids that don't collide with
+#   existing features. The library only validates uniqueness.
+#
+# All operations below are idempotent-no-op when the data already
+# matches (e.g. set_priority to the current priority); they still
+# recompute metadata + save so a round-trip is safe for callers
+# that want to use the response for a refresh signal.
+
+
+def _next_id_for_split(base_id: str, index: int, existing_ids: set[str]) -> str:
+    """Return a unique id for the Nth split child (1-indexed)."""
+    suffix = f"-{index}"
+    candidate = f"{base_id}{suffix}"
+    # In practice split creates at most a handful of children, so a
+    # simple loop is fine. If the user asks for more than 10 we'll
+    # still produce something but the suffix gets longer.
+    if candidate not in existing_ids:
+        return candidate
+    counter = 2
+    while True:
+        candidate = f"{base_id}{suffix}-{counter}"
+        if candidate not in existing_ids:
+            return candidate
+        counter += 1
+
+
+def _feature_to_dict(feature: dict[str, Any]) -> dict[str, Any]:
+    """Snapshot a feature row for diff payloads.
+
+    Returns a shallow copy so the caller can mutate it (e.g. to
+    assemble a synthetic "after" view) without affecting the
+    underlying dict.
+    """
+    return {k: v for k, v in feature.items()}
+
+
+def _normalize_deps(deps: Any) -> list[str]:
+    """Coerce an iterable / None / single-string input into a list[str]."""
+    if deps is None:
+        return []
+    if isinstance(deps, str):
+        return [d.strip() for d in deps.split(",") if d.strip()]
+    return [str(d).strip() for d in deps if d and str(d).strip()]
+
+
+def split_feature(
+    path: Path | str | None,
+    feature_id: str,
+    *,
+    new_features: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Split a feature into N new features (D-054 / feat-054).
+
+    The original feature is marked ``superseded_by`` the first new
+    feature (so it hides from the main kanban / ``next_feature``),
+    and each entry in ``new_features`` is appended as a fresh
+    ``feat-XXX`` row via :func:`add`. The caller supplies
+    ``{title, description, steps, depends_on}`` for each child;
+    ``category``, ``kind``, ``priority`` follow the parent's values.
+
+    Returns a dict with:
+      - ``source``: the post-mutation snapshot of the original
+        (now superseded) row.
+      - ``created``: list of new feature rows in submission order.
+      - ``diff``: a human-readable before/after summary for the UI.
+
+    Raises :func:`fail` (SystemExit) on validation errors
+    (unknown id, empty children list, duplicate new ids, etc.).
+    """
+    if not ID_REGEX.fullmatch(feature_id):
+        fail(
+            f"feature_id {feature_id!r} must match {ID_REGEX.pattern}"
+        )
+    if not isinstance(new_features, list) or len(new_features) == 0:
+        fail("new_features must be a non-empty list")
+    if len(new_features) > 20:
+        fail(f"too many split children ({len(new_features)}); max is 20")
+
+    data = load(path)
+    source = _find_feature(data, feature_id)
+    if source is None:
+        fail(f"feature {feature_id!r} not found")
+    _ensure_extras(source)
+    source_snapshot = _feature_to_dict(source)
+    known_ids = {f.get("id") for f in data["features"]}
+
+    # Resolve / validate each proposed child's id. Callers may pass
+    # an explicit `id` per child; otherwise we synthesise a
+    # `<base>-<index>` id and let add() do the uniqueness check.
+    resolved_children: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for idx, raw in enumerate(new_features, start=1):
+        if not isinstance(raw, dict):
+            fail(f"new_features[{idx - 1}] must be a dict")
+        explicit_id = raw.get("id")
+        if isinstance(explicit_id, str) and explicit_id.strip():
+            new_id = explicit_id.strip()
+        else:
+            new_id = _next_id_for_split(feature_id, idx, known_ids)
+        if new_id == feature_id:
+            fail(f"split child id {new_id!r} must differ from source")
+        if new_id in known_ids or new_id in seen_ids:
+            fail(f"split child id {new_id!r} already exists")
+        seen_ids.add(new_id)
+        known_ids.add(new_id)
+        depends = _normalize_deps(raw.get("depends_on"))
+        # The source is about to be superseded; if a child claims a
+        # dep on it, that would create a phantom dep on an archived
+        # feature. Substitute the source's own superseded_by chain
+        # (or just drop the dep and let the user re-add it).
+        depends = [d for d in depends if d != feature_id]
+        resolved_children.append({
+            "id": new_id,
+            "title": (raw.get("title") or "").strip(),
+            "description": (raw.get("description") or "").strip(),
+            "steps": list(raw.get("steps") or []),
+            "depends_on": depends,
+            "category": raw.get("category") or source.get("category") or "functional",
+            "priority": raw.get("priority") or source.get("priority") or "medium",
+            "kind": raw.get("kind") or source.get("kind") or DEFAULT_KIND,
+        })
+    # First child becomes the successor — the source's
+    # superseded_by points at it.
+    successor_id = resolved_children[0]["id"]
+
+    # Build + add each child via the canonical `add()` helper so
+    # validation (id regex, depends_on, step placeholders, etc.)
+    # runs the same path as a fresh draft-confirm.
+    for child in resolved_children:
+        # Title → description for add(); add() only accepts
+        # `description`, so we lift the child's title into it (the
+        # stored row's `description` will be the title; a fuller
+        # prose summary is the user's responsibility).
+        desc = child["description"] or child["title"]
+        add(
+            path,
+            feature_id=child["id"],
+            category=child["category"],
+            description=desc,
+            priority=child["priority"],
+            step=child["steps"],
+            depends_on=",".join(child["depends_on"]),
+            kind=child["kind"],
+        )
+
+    # Reload to capture the post-add state and stamp superseded_by.
+    data = load(path)
+    source = _find_feature(data, feature_id)
+    if source is None:  # pragma: no cover — defensive
+        fail(f"feature {feature_id!r} vanished mid-split")
+    source["superseded_by"] = successor_id
+    created = [
+        _find_feature(data, c["id"])
+        for c in resolved_children
+        if _find_feature(data, c["id"]) is not None
+    ]
+    diff = _build_diff_split(source_snapshot, created, successor_id)
+    recompute_metadata(data)
+    save(path, data)
+    return {
+        "source": _feature_to_dict(source),
+        "created": [_feature_to_dict(c) for c in created],
+        "diff": diff,
+    }
+
+
+def merge_features(
+    path: Path | str | None,
+    source_ids: list[str],
+    *,
+    target: dict[str, Any],
+) -> dict[str, Any]:
+    """Merge N source features into one new target feature (D-054).
+
+    Each source is marked ``superseded_by`` the new target's id and
+    hides from the main kanban. The target row is added via the
+    canonical :func:`add` path so its validation rules match a
+    fresh draft.
+
+    Returns a dict with:
+      - ``sources``: post-mutation snapshots of the source rows.
+      - ``created``: the new merged feature row.
+      - ``diff``: a human-readable before/after summary for the UI.
+    """
+    if not isinstance(source_ids, list) or len(source_ids) == 0:
+        fail("source_ids must be a non-empty list")
+    if len(source_ids) > 20:
+        fail(f"too many sources ({len(source_ids)}); max is 20")
+    if not isinstance(target, dict):
+        fail("target must be a dict")
+
+    data = load(path)
+    sources = [_find_feature(data, sid) for sid in source_ids]
+    for sid, row in zip(source_ids, sources):
+        if row is None:
+            fail(f"feature {sid!r} not found")
+    if any(s.get("id") == target.get("id") for s in sources):
+        fail("target id must differ from every source id")
+    source_snapshots = [_feature_to_dict(s) for s in sources]
+
+    target_id = (target.get("id") or "").strip()
+    if not target_id:
+        fail("target.id must be a non-empty string")
+    if target_id in {f.get("id") for f in data["features"]}:
+        fail(f"target id {target_id!r} already exists")
+    depends = _normalize_deps(target.get("depends_on"))
+    # Drop any deps pointing at the sources themselves (the sources
+    # will be archived).
+    depends = [d for d in depends if d not in set(source_ids)]
+
+    add(
+        path,
+        feature_id=target_id,
+        category=target.get("category") or sources[0].get("category") or "functional",
+        description=(target.get("description") or target.get("title") or "").strip(),
+        priority=target.get("priority") or sources[0].get("priority") or "medium",
+        step=list(target.get("steps") or []),
+        depends_on=",".join(depends),
+        kind=target.get("kind") or sources[0].get("kind") or DEFAULT_KIND,
+    )
+
+    # Reload and stamp superseded_by on each source.
+    data = load(path)
+    successor = _find_feature(data, target_id)
+    if successor is None:  # pragma: no cover
+        fail(f"target {target_id!r} vanished mid-merge")
+    for sid in source_ids:
+        src = _find_feature(data, sid)
+        if src is None:  # pragma: no cover
+            continue
+        src["superseded_by"] = target_id
+    updated_sources = [_find_feature(data, sid) for sid in source_ids]
+    diff = _build_diff_merge(source_snapshots, successor)
+    recompute_metadata(data)
+    save(path, data)
+    return {
+        "sources": [_feature_to_dict(s) for s in updated_sources if s is not None],
+        "created": _feature_to_dict(successor),
+        "diff": diff,
+    }
+
+
+def edit_feature(
+    path: Path | str | None,
+    feature_id: str,
+    *,
+    title: str | None = None,
+    description: str | None = None,
+    steps: list[str] | None = None,
+    category: str | None = None,
+) -> dict[str, Any]:
+    """Edit non-destructive fields on an existing feature (D-054).
+
+    Supports: title (stored as `description` on disk per
+    feature_list_io convention), description (longer prose kept as
+    a synthetic extended field), steps, category. None means
+    "leave unchanged". Empty string means "clear".
+
+    The function is intentionally NOT destructive — it never
+    touches ``status``, ``depends_on``, ``priority``, or
+    ``superseded_by``. For those, use the dedicated ops.
+
+    Returns ``{feature: <updated row>, diff: <before/after summary>}``.
+    """
+    if not ID_REGEX.fullmatch(feature_id):
+        fail(f"feature_id {feature_id!r} must match {ID_REGEX.pattern}")
+    data = load(path)
+    feature = _find_feature(data, feature_id)
+    if feature is None:
+        fail(f"feature {feature_id!r} not found")
+    _ensure_extras(feature)
+    before = _feature_to_dict(feature)
+
+    # Step validation (mirrors add() / set_steps()).
+    new_steps: list[str] | None = None
+    if steps is not None:
+        new_steps = []
+        for i, raw_step in enumerate(steps):
+            if not isinstance(raw_step, str):
+                fail(f"step #{i} must be a string")
+            cleaned = raw_step.rstrip("\r\n")
+            if len(cleaned) > STEP_MAX_CHARS:
+                fail(f"step #{i} is {len(cleaned)} chars; max is {STEP_MAX_CHARS}")
+            if _is_placeholder_step(cleaned):
+                fail(
+                    f"step #{i} is a placeholder ({cleaned!r}); "
+                    "author a real, verifiable step."
+                )
+            new_steps.append(cleaned)
+
+    # Title semantics: feature_list_io stores the short summary as
+    # `description`. We accept either `title` or `description` in
+    # the body — title wins if both are passed.
+    new_description: str | None = None
+    if title is not None:
+        new_description = title.strip()
+    elif description is not None:
+        new_description = description.strip()
+    if new_description is not None and not new_description:
+        fail("description / title must be non-empty when provided")
+
+    if category is not None:
+        if category not in VALID_CATEGORIES:
+            fail(f"category {category!r} is not in {sorted(VALID_CATEGORIES)}")
+
+    # Apply mutations.
+    if new_description is not None:
+        feature["description"] = new_description
+    if new_steps is not None:
+        feature["steps"] = new_steps
+    if category is not None:
+        feature["category"] = category
+
+    diff = _build_diff_edit(before, feature)
+    recompute_metadata(data)
+    save(path, data)
+    return {"feature": _feature_to_dict(feature), "diff": diff}
+
+
+def set_priority(
+    path: Path | str | None,
+    feature_id: str,
+    *,
+    priority: str,
+) -> dict[str, Any]:
+    """Reprioritize an existing feature (D-054).
+
+    Accepts "high" | "medium" | "low". Idempotent — passing the
+    current priority still returns a diff (empty changes list) and
+    saves so the caller can use the response as a refresh signal.
+    """
+    if not ID_REGEX.fullmatch(feature_id):
+        fail(f"feature_id {feature_id!r} must match {ID_REGEX.pattern}")
+    if priority not in VALID_PRIORITIES:
+        fail(f"priority {priority!r} is not in {sorted(VALID_PRIORITIES)}")
+    data = load(path)
+    feature = _find_feature(data, feature_id)
+    if feature is None:
+        fail(f"feature {feature_id!r} not found")
+    before = _feature_to_dict(feature)
+    feature["priority"] = priority
+    diff = {
+        "before": {"priority": before.get("priority")},
+        "after": {"priority": priority},
+        "changes": (
+            [] if before.get("priority") == priority else ["priority"]
+        ),
+    }
+    recompute_metadata(data)
+    save(path, data)
+    return {"feature": _feature_to_dict(feature), "diff": diff}
+
+
+def update_deps(
+    path: Path | str | None,
+    feature_id: str,
+    *,
+    add: list[str] | None = None,
+    remove: list[str] | None = None,
+) -> dict[str, Any]:
+    """Add / remove depends_on entries on a feature (D-054).
+
+    `add` and `remove` are optional; both default to no-op. Each
+    is normalised as a list of feature ids. Entries appearing in
+    BOTH lists are rejected (ambiguous). Removal of a dep that
+    isn't present is silently ignored (idempotent).
+    """
+    if not ID_REGEX.fullmatch(feature_id):
+        fail(f"feature_id {feature_id!r} must match {ID_REGEX.pattern}")
+    add_list = _normalize_deps(add)
+    remove_list = _normalize_deps(remove)
+    overlap = set(add_list) & set(remove_list)
+    if overlap:
+        fail(f"add/remove both reference: {sorted(overlap)}")
+    if not add_list and not remove_list:
+        fail("at least one of add / remove must be a non-empty list")
+    data = load(path)
+    feature = _find_feature(data, feature_id)
+    if feature is None:
+        fail(f"feature {feature_id!r} not found")
+    _ensure_extras(feature)
+    known_ids = {f.get("id") for f in data["features"] if f is not feature}
+
+    # Validate each add target exists + isn't self.
+    for dep in add_list:
+        if dep == feature_id:
+            fail(f"feature {feature_id!r} cannot depend on itself")
+        if dep not in known_ids:
+            fail(f"add dep {dep!r} does not exist")
+
+    before = list(feature.get("depends_on") or [])
+    after = list(before)
+    # Drop removes first (so an entry in both lists is rejected
+    # above rather than silently net-zero'd).
+    for dep in remove_list:
+        if dep in after:
+            after.remove(dep)
+    # Append adds (deduped, in submission order).
+    for dep in add_list:
+        if dep not in after:
+            after.append(dep)
+
+    feature["depends_on"] = after
+    diff = {
+        "before": list(before),
+        "after": list(after),
+        "added": [d for d in add_list if d not in before],
+        "removed": [d for d in remove_list if d in before],
+    }
+    recompute_metadata(data)
+    save(path, data)
+    return {"feature": _feature_to_dict(feature), "diff": diff}
+
+
+# ---------- diff builders (D-054 / feat-054) ----------
+#
+# Each builder returns a small dict the dialog UI can render in a
+# confirmation card. The shape is intentionally JSON-friendly
+# (lists + dicts + primitives only — no Python objects) so the
+# browser can map it straight onto a "before/after" display.
+
+def _build_diff_split(
+    source_snapshot: dict[str, Any],
+    created: list[dict[str, Any]],
+    successor_id: str,
+) -> dict[str, Any]:
+    return {
+        "operation": "split",
+        "source": {"id": source_snapshot.get("id"), "title": source_snapshot.get("description")},
+        "successor_id": successor_id,
+        "created": [
+            {"id": c.get("id"), "title": c.get("description")}
+            for c in created
+        ],
+        "changes": [
+            f"archive {source_snapshot.get('id')} (superseded_by={successor_id})",
+            *[f"add {c.get('id')}" for c in created],
+        ],
+    }
+
+
+def _build_diff_merge(
+    source_snapshots: list[dict[str, Any]],
+    successor: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "operation": "merge",
+        "sources": [
+            {"id": s.get("id"), "title": s.get("description")}
+            for s in source_snapshots
+        ],
+        "successor": {"id": successor.get("id"), "title": successor.get("description")},
+        "changes": [
+            f"archive {s.get('id')} (superseded_by={successor.get('id')})"
+            for s in source_snapshots
+        ] + [f"add {successor.get('id')}"],
+    }
+
+
+def _build_diff_edit(
+    before: dict[str, Any],
+    after: dict[str, Any],
+) -> dict[str, Any]:
+    """Field-by-field edit diff. Skips unchanged keys."""
+    changes: list[dict[str, Any]] = []
+    for key in ("description", "steps", "category"):
+        b = before.get(key)
+        a = after.get(key)
+        if b != a:
+            changes.append({"field": key, "before": b, "after": a})
+    return {"operation": "edit", "changes": changes}

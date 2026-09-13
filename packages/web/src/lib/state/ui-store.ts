@@ -51,6 +51,28 @@ export interface UiState {
   dagViewOpen: boolean;
   setDagViewOpen: (open: boolean) => void;
   toggleDagView: () => void;
+  /**
+   * feat-054 / D-054: a destructive dialog command may park a
+   * confirmation request here before invoking the mutation. The
+   * dialog UI renders a card with the diff + Confirm / Cancel
+   * buttons; clicking Confirm runs `apply`, Cancel runs `cancel`.
+   * Only one pending confirmation at a time — a second command
+   * overwrites the first (the user has to dismiss it explicitly).
+   */
+  pendingConfirmation: PendingConfirmation | null;
+  setPendingConfirmation: (req: PendingConfirmation | null) => void;
+}
+
+export interface PendingConfirmation {
+  id: string;
+  featureId: string;
+  command: string;
+  /** Free-form diff object — the dialog renders its `changes` array. */
+  diff: unknown;
+  /** Confirm callback — runs the destructive mutation. */
+  apply: () => Promise<void>;
+  /** Cancel callback — drops the request, no mutation. */
+  cancel: () => void;
 }
 
 /**
@@ -101,6 +123,14 @@ export const useUiStore = create<UiState>()(
       dagViewOpen: false,
       setDagViewOpen: (open) => set({ dagViewOpen: open }),
       toggleDagView: () => set({ dagViewOpen: !get().dagViewOpen }),
+      // feat-054: destructive-op confirmation state. The dialog
+      // writes a request before the user confirms; the dialog UI
+      // reads it to render the card. We intentionally exclude this
+      // from `partialize` — a confirm request must not survive a
+      // page reload (the diff is stale, the apply callback is
+      // closed over stale mutations).
+      pendingConfirmation: null,
+      setPendingConfirmation: (req) => set({ pendingConfirmation: req }),
     }),
     {
       name: "heddle.ui.state",

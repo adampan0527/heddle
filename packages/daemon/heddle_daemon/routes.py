@@ -61,12 +61,17 @@ from heddle_common.dag_validation import validate_drafts
 from heddle_common.feature_list_io import (
     SchemaVersionError,
     add as _fl_add,
+    edit_feature as _fl_edit_feature,
     fail as _fl_fail,
     load as _fl_load,
     mark_blocked as _fl_mark_blocked,
     mark_in_progress as _fl_mark_in_progress,
     mark_passing as _fl_mark_passing,
+    merge_features as _fl_merge_features,
     save as _fl_save,
+    set_priority as _fl_set_priority,
+    split_feature as _fl_split_feature,
+    update_deps as _fl_update_deps,
 )
 from heddle_common.projects_io import (
     ProjectsError,
@@ -379,6 +384,25 @@ class RouteHandler:
                 return self._ok_response(req_id, env.type, data)
             if env.type == "drafts_confirm":
                 data = self._drafts_confirm(env.extra)
+                return self._ok_response(req_id, env.type, data)
+            # feat-054 / D-054: post-confirm feature modification.
+            # Six dialog-driven mutations; the destructive ones
+            # (split, merge, deps-remove) include a diff the UI
+            # shows before the user confirms.
+            if env.type == "feature_split":
+                data = self._feature_split(env.extra)
+                return self._ok_response(req_id, env.type, data)
+            if env.type == "feature_merge":
+                data = self._feature_merge(env.extra)
+                return self._ok_response(req_id, env.type, data)
+            if env.type == "feature_edit":
+                data = self._feature_edit(env.extra)
+                return self._ok_response(req_id, env.type, data)
+            if env.type == "feature_reprioritize":
+                data = self._feature_reprioritize(env.extra)
+                return self._ok_response(req_id, env.type, data)
+            if env.type == "feature_update_deps":
+                data = self._feature_update_deps(env.extra)
                 return self._ok_response(req_id, env.type, data)
             # feat-030: per-feature command handlers. Each one is a
             # wire-shape stub right now (validates input + emits a
@@ -984,6 +1008,214 @@ class RouteHandler:
             "project_id": project_id,
             "ok": False,
             "error": {"code": code, "message": message},
+        }
+
+    # ----- feat-054 / D-054: post-confirm feature modification -----
+
+    def _feature_split(self, extras: dict[str, Any]) -> dict[str, Any]:
+        """Split a feature into N children (D-054 / feat-054).
+
+        Payload: ``{project_id, feature_id, new_features: [...]}``.
+        ``new_features`` is a non-empty list of ``{title,
+        description?, steps?, depends_on?, category?, priority?,
+        kind?}`` dicts. The first child becomes the successor; the
+        source is marked ``superseded_by`` that id and hides from
+        the main kanban (per `next_feature`'s skip rule).
+
+        Response: ``{project_id, feature_id, source, created,
+        diff}``. The ``diff`` field describes the before/after state
+        the dialog UI renders in a confirmation card; the
+        destructive classification comes from the caller (D-054:
+        "destructive ops MUST show diff before execution").
+        """
+        project_id = extras.get("project_id")
+        feature_id = extras.get("feature_id")
+        new_features = extras.get("new_features")
+        if not isinstance(project_id, str) or not project_id:
+            raise RoutesError("project_id must be a non-empty string")
+        if not isinstance(feature_id, str) or not feature_id:
+            raise RoutesError("feature_id must be a non-empty string")
+        if not isinstance(new_features, list) or not new_features:
+            raise RoutesError("new_features must be a non-empty list")
+        project = self._lookup_project(project_id)
+        path = self.feature_list_path_for(project)
+        result = _safe_fail_call(
+            lambda: _fl_split_feature(
+                path, feature_id, new_features=new_features
+            )
+        )
+        _logging.info(
+            component="routes",
+            event="feature_split",
+            msg=f"split {feature_id} into {len(result['created'])} child(ren)",
+            project_id=project_id,
+            feature_id=feature_id,
+            child_count=len(result["created"]),
+        )
+        return {
+            "project_id": project_id,
+            "feature_id": feature_id,
+            **result,
+        }
+
+    def _feature_merge(self, extras: dict[str, Any]) -> dict[str, Any]:
+        """Merge N source features into one target (D-054 / feat-054).
+
+        Payload: ``{project_id, source_ids: [...], target: {...}}``.
+        Each source is marked ``superseded_by`` the new target.
+        Response: ``{project_id, sources, created, diff}``.
+        """
+        project_id = extras.get("project_id")
+        source_ids = extras.get("source_ids")
+        target = extras.get("target")
+        if not isinstance(project_id, str) or not project_id:
+            raise RoutesError("project_id must be a non-empty string")
+        if not isinstance(source_ids, list) or not source_ids:
+            raise RoutesError("source_ids must be a non-empty list")
+        if not isinstance(target, dict):
+            raise RoutesError("target must be a dict")
+        project = self._lookup_project(project_id)
+        path = self.feature_list_path_for(project)
+        result = _safe_fail_call(
+            lambda: _fl_merge_features(
+                path, source_ids, target=target
+            )
+        )
+        _logging.info(
+            component="routes",
+            event="feature_merge",
+            msg=f"merged {len(source_ids)} feature(s) into {result['created'].get('id')}",
+            project_id=project_id,
+            source_ids=list(source_ids),
+            successor_id=result["created"].get("id"),
+        )
+        return {
+            "project_id": project_id,
+            **result,
+        }
+
+    def _feature_edit(self, extras: dict[str, Any]) -> dict[str, Any]:
+        """Edit non-destructive fields on a feature (D-054 / feat-054).
+
+        Payload: ``{project_id, feature_id, title?, description?,
+        steps?, category?}``. None means "leave unchanged". Empty
+        string means "clear" (rejected for title/description which
+        must stay non-empty).
+
+        Response: ``{project_id, feature_id, feature, diff}``.
+        """
+        project_id = extras.get("project_id")
+        feature_id = extras.get("feature_id")
+        if not isinstance(project_id, str) or not project_id:
+            raise RoutesError("project_id must be a non-empty string")
+        if not isinstance(feature_id, str) or not feature_id:
+            raise RoutesError("feature_id must be a non-empty string")
+        project = self._lookup_project(project_id)
+        path = self.feature_list_path_for(project)
+        kwargs: dict[str, Any] = {}
+        for key in ("title", "description", "category"):
+            if key in extras:
+                kwargs[key] = extras[key]
+        if "steps" in extras:
+            steps = extras["steps"]
+            if steps is not None and not isinstance(steps, list):
+                raise RoutesError("steps must be a list when provided")
+            kwargs["steps"] = steps
+        result = _safe_fail_call(
+            lambda: _fl_edit_feature(path, feature_id, **kwargs)
+        )
+        _logging.info(
+            component="routes",
+            event="feature_edited",
+            msg=f"edited {feature_id}",
+            project_id=project_id,
+            feature_id=feature_id,
+            changed_fields=[c["field"] for c in result["diff"]["changes"]],
+        )
+        return {
+            "project_id": project_id,
+            "feature_id": feature_id,
+            **result,
+        }
+
+    def _feature_reprioritize(self, extras: dict[str, Any]) -> dict[str, Any]:
+        """Set a feature's priority (D-054 / feat-054).
+
+        Payload: ``{project_id, feature_id, priority}``. Idempotent
+        (passing the current priority returns an empty diff).
+        Response: ``{project_id, feature_id, feature, diff}``.
+        """
+        project_id = extras.get("project_id")
+        feature_id = extras.get("feature_id")
+        priority = extras.get("priority")
+        if not isinstance(project_id, str) or not project_id:
+            raise RoutesError("project_id must be a non-empty string")
+        if not isinstance(feature_id, str) or not feature_id:
+            raise RoutesError("feature_id must be a non-empty string")
+        if not isinstance(priority, str):
+            raise RoutesError("priority must be a string")
+        project = self._lookup_project(project_id)
+        path = self.feature_list_path_for(project)
+        result = _safe_fail_call(
+            lambda: _fl_set_priority(path, feature_id, priority=priority)
+        )
+        _logging.info(
+            component="routes",
+            event="feature_reprioritized",
+            msg=f"reprioritized {feature_id} -> {priority}",
+            project_id=project_id,
+            feature_id=feature_id,
+            priority=priority,
+        )
+        return {
+            "project_id": project_id,
+            "feature_id": feature_id,
+            **result,
+        }
+
+    def _feature_update_deps(self, extras: dict[str, Any]) -> dict[str, Any]:
+        """Add / remove depends_on entries (D-054 / feat-054).
+
+        Payload: ``{project_id, feature_id, add?: [...], remove?:
+        [...]}``. Entries appearing in BOTH lists are rejected with
+        ``invalid_input``. Removal is destructive in spirit (drops a
+        relationship), so the response includes a diff the UI can
+        display in a confirmation card.
+
+        Response: ``{project_id, feature_id, feature, diff}``.
+        """
+        project_id = extras.get("project_id")
+        feature_id = extras.get("feature_id")
+        add_ids = extras.get("add")
+        remove_ids = extras.get("remove")
+        if not isinstance(project_id, str) or not project_id:
+            raise RoutesError("project_id must be a non-empty string")
+        if not isinstance(feature_id, str) or not feature_id:
+            raise RoutesError("feature_id must be a non-empty string")
+        if add_ids is not None and not isinstance(add_ids, list):
+            raise RoutesError("add must be a list when provided")
+        if remove_ids is not None and not isinstance(remove_ids, list):
+            raise RoutesError("remove must be a list when provided")
+        project = self._lookup_project(project_id)
+        path = self.feature_list_path_for(project)
+        result = _safe_fail_call(
+            lambda: _fl_update_deps(
+                path, feature_id, add=add_ids, remove=remove_ids
+            )
+        )
+        _logging.info(
+            component="routes",
+            event="feature_deps_updated",
+            msg=f"updated deps on {feature_id}",
+            project_id=project_id,
+            feature_id=feature_id,
+            added=result["diff"].get("added", []),
+            removed=result["diff"].get("removed", []),
+        )
+        return {
+            "project_id": project_id,
+            "feature_id": feature_id,
+            **result,
         }
 
     # ----- internal helpers -----

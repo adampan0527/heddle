@@ -26,6 +26,11 @@ export interface TranscriptEntry {
   diagnosis?: DiagnoseResponse;
   /** Optional feature id the diagnosis is about (e.g. "feat-042"). */
   diagnosisFeatureId?: string;
+  /** feat-054 / D-054: when this assistant entry carries a
+   *  destructive-op confirmation request, this id matches a row in
+   *  the UI store's `pendingConfirmation`. The dialog renders the
+   *  confirmation card with that row's diff + Confirm/Cancel. */
+  confirmationId?: string;
 }
 
 /** A new entry sans `id` and `at`; the helpers fill those in. */

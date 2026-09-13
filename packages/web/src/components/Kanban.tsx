@@ -88,8 +88,19 @@ const COLUMNS: ReadonlyArray<{
  *
  * `pending` still surfaces in Ready so the user sees work that has
  * never been attempted.
+ *
+ * feat-054 (D-054): a feature with `superseded_by != null` is treated
+ * as if it were absent from the work graph — it shows only in the
+ * Archive lane, never in the main columns. This is what makes split /
+ * merge ops feel "non-destructive but visible": the old row is still
+ * on disk, just hidden from the active work area.
  */
 export function columnOf(feature: Feature): KanbanColumnId | null {
+  // feat-054: superseded features hide from the main view regardless
+  // of their status. We check `superseded_by` BEFORE the status branch
+  // so a feature that was `passing` AND superseded still ends up in
+  // Archive rather than Done.
+  if (feature.superseded_by != null) return null;
   const s: string = feature.status;
   if (s === "in_progress") return "in_progress";
   if (s === "blocked") return "blocked";

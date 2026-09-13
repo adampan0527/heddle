@@ -120,6 +120,93 @@ export interface DialogResponse {
 /** Body of POST /api/projects/:id/features/:fid/transition. */
 export type TransitionAction = "retry" | "abandon" | "mark-done";
 
+/** Diff payload returned by destructive feat-054 ops (D-054). */
+export interface FeatureDiff {
+  operation: "split" | "merge" | "edit" | "deps";
+  changes: unknown[];
+  [extra: string]: unknown;
+}
+
+/** Body of POST /api/projects/:id/features/:fid/split. */
+export interface SplitFeatureBody {
+  featureId: string;
+  new_features: SplitChild[];
+}
+export interface SplitChild {
+  id?: string | null;
+  title: string;
+  description?: string;
+  steps?: string[];
+  depends_on?: string[];
+  category?: string;
+  priority?: "high" | "medium" | "low";
+  kind?: FeatureKind;
+}
+export interface SplitFeatureData {
+  project_id: string;
+  feature_id: string;
+  source: Feature;
+  created: Feature[];
+  diff: FeatureDiff;
+}
+
+/** Body of POST /api/projects/:id/features/merge. */
+export interface MergeFeatureBody {
+  source_ids: string[];
+  target: SplitChild & { id: string };
+}
+export interface MergeFeatureData {
+  project_id: string;
+  sources: Feature[];
+  created: Feature;
+  diff: FeatureDiff;
+}
+
+/** Body of PATCH /api/projects/:id/features/:fid (feat-054 edit). */
+export interface EditFeatureBody {
+  featureId: string;
+  title?: string;
+  description?: string;
+  steps?: string[];
+  category?: string;
+}
+export interface EditFeatureData {
+  project_id: string;
+  feature_id: string;
+  feature: Feature;
+  diff: FeatureDiff;
+}
+
+/** Body of PATCH /api/projects/:id/features/:fid/priority. */
+export interface ReprioritizeFeatureBody {
+  featureId: string;
+  priority: "high" | "medium" | "low";
+}
+export interface ReprioritizeFeatureData {
+  project_id: string;
+  feature_id: string;
+  feature: Feature;
+  diff: { before: { priority: string }; after: { priority: string }; changes: string[] };
+}
+
+/** Body of POST /api/projects/:id/features/:fid/deps. */
+export interface UpdateDepsBody {
+  featureId: string;
+  add?: string[];
+  remove?: string[];
+}
+export interface UpdateDepsData {
+  project_id: string;
+  feature_id: string;
+  feature: Feature;
+  diff: {
+    before: string[];
+    after: string[];
+    added: string[];
+    removed: string[];
+  };
+}
+
 /** Body of POST /api/projects (add project). */
 export interface AddProjectBody {
   path: string;

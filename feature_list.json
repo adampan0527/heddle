@@ -1630,13 +1630,21 @@
         "On reprioritize / add-dep / remove-dep: apply directly (non-destructive)",
         "Test: type '@feat-003 拆成 3 个'; assert 3 draft cards produced and feat-003 marked superseded"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "medium",
       "depends_on": [
         "feat-010",
         "feat-038"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-054",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1694,8 +1702,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 51,
-    "failing": 3,
+    "passing": 52,
+    "failing": 2,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

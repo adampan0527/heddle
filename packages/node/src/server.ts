@@ -93,6 +93,10 @@ export async function buildServer(
   // feat-040: draft-tray confirmation route. Currently a 501 stub —
   // see the file's header for the planned `forwardOrFail` swap.
   const { registerDraftRoutes } = await import("./routes/drafts.js");
+  // feat-054 / D-054: post-confirm feature modification routes.
+  const { registerModifyFeatureRoutes } = await import(
+    "./routes/modify-features.js"
+  );
 
   // The plugin casts are needed because Fastify v4's default
   // generic route registration loses the TypeBox provider through
@@ -115,6 +119,12 @@ export async function buildServer(
   await app.register(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     registerDraftRoutes as any,
+    { supervisor: options.supervisor },
+  );
+  // feat-054: split / merge / edit / reprioritize / deps routes.
+  await app.register(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    registerModifyFeatureRoutes as any,
     { supervisor: options.supervisor },
   );
 

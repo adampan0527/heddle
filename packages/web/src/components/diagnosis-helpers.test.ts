@@ -18,6 +18,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   extractDiagnosis,
+  isDestructiveCommand,
   mockDiagnoseResponse,
   parseDialogCommand,
   parseMarkerBody,
@@ -189,5 +190,108 @@ describe("parseDialogCommand (feat-043 / D-033)", () => {
     expect(
       parseDialogCommand("@feat-042 mark-done please"),
     ).toBeNull();
+  });
+});
+
+describe("parseDialogCommand (feat-054 / D-054)", () => {
+  test("parses `@feat-007 split into 3 parts`", () => {
+    expect(parseDialogCommand("@feat-007 split into 3 parts")).toEqual({
+      kind: "command",
+      featureId: "feat-007",
+      command: "split",
+      payload: "3",
+    });
+  });
+
+  test("parses `@feat-007 split into 2 part` (singular ok)", () => {
+    expect(parseDialogCommand("@feat-007 split into 2 part")).toEqual({
+      kind: "command",
+      featureId: "feat-007",
+      command: "split",
+      payload: "2",
+    });
+  });
+
+  test("split without a count is null", () => {
+    expect(parseDialogCommand("@feat-007 split into some parts")).toBeNull();
+  });
+
+  test("parses `@feat-007 merge with @feat-008`", () => {
+    expect(parseDialogCommand("@feat-007 merge with @feat-008")).toEqual({
+      kind: "command",
+      featureId: "feat-007",
+      command: "merge",
+      mentions: ["feat-008"],
+    });
+  });
+
+  test("parses `@feat-007 rename to New title`", () => {
+    expect(parseDialogCommand("@feat-007 rename to New title")).toEqual({
+      kind: "command",
+      featureId: "feat-007",
+      command: "rename",
+      payload: "New title",
+    });
+  });
+
+  test("rename without a title is null", () => {
+    expect(parseDialogCommand("@feat-007 rename to")).toBeNull();
+  });
+
+  test("parses `@feat-007 set priority high|medium|low`", () => {
+    for (const p of ["high", "medium", "low"]) {
+      expect(parseDialogCommand(`@feat-007 set priority ${p}`)).toEqual({
+        kind: "command",
+        featureId: "feat-007",
+        command: "set-priority",
+        payload: p,
+      });
+    }
+  });
+
+  test("set priority with bogus value is null", () => {
+    expect(parseDialogCommand("@feat-007 set priority urgent")).toBeNull();
+  });
+
+  test("parses `@feat-007 depend on @feat-008`", () => {
+    expect(parseDialogCommand("@feat-007 depend on @feat-008")).toEqual({
+      kind: "command",
+      featureId: "feat-007",
+      command: "add-dep",
+      mentions: ["feat-008"],
+    });
+  });
+
+  test("parses `@feat-007 remove dep @feat-008`", () => {
+    expect(parseDialogCommand("@feat-007 remove dep @feat-008")).toEqual({
+      kind: "command",
+      featureId: "feat-007",
+      command: "remove-dep",
+      mentions: ["feat-008"],
+    });
+  });
+
+  test("case + whitespace insensitive", () => {
+    expect(parseDialogCommand("  @FEAT-007   SPLIT   INTO  4  PARTS  ")).toEqual({
+      kind: "command",
+      featureId: "feat-007",
+      command: "split",
+      payload: "4",
+    });
+  });
+});
+
+describe("isDestructiveCommand (feat-054)", () => {
+  test("flags split / merge / remove-dep", () => {
+    expect(isDestructiveCommand("split")).toBe(true);
+    expect(isDestructiveCommand("merge")).toBe(true);
+    expect(isDestructiveCommand("remove-dep")).toBe(true);
+  });
+  test("does NOT flag the others", () => {
+    expect(isDestructiveCommand("rename")).toBe(false);
+    expect(isDestructiveCommand("set-priority")).toBe(false);
+    expect(isDestructiveCommand("add-dep")).toBe(false);
+    expect(isDestructiveCommand("retry")).toBe(false);
+    expect(isDestructiveCommand("diagnose")).toBe(false);
   });
 });
