@@ -23,6 +23,14 @@ yarn-error.log*
 .nuxt/
 coverage/
 
+# --- TypeScript build output under package sources ---
+# Source trees (packages/*/src/) should only contain .ts files.
+# tsc with `noEmit: true` won't produce these, but a stray tsc
+# invocation with the wrong flags will. Keep src/ TS-only.
+packages/*/src/*.js
+packages/*/src/*.js.map
+*.tsbuildinfo
+
 # --- Secrets and environment files ---
 .env
 .env.*
