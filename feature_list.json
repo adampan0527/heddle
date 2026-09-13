@@ -1147,12 +1147,20 @@
         "Arrow keys to navigate, Enter to confirm (inserts '@feat-XXX '), Esc to dismiss",
         "Test: type @fe in dialog; assert dropdown shows feat-001, feat-002 etc.; press Enter on feat-003; assert textarea now has '@feat-003 '"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "high",
       "depends_on": [
         "feat-038"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-039",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1574,8 +1582,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 36,
-    "failing": 18,
+    "passing": 37,
+    "failing": 17,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

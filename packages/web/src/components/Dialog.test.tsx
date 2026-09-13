@@ -19,6 +19,7 @@
  * and don't depend on the live API hook's internals.
  */
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 
@@ -28,9 +29,15 @@ vi.mock("../lib/api/dialog.js", () => ({
   useSubmitDialog: vi.fn(),
 }));
 
+vi.mock("../lib/api/features.js", () => ({
+  useFeatures: vi.fn(),
+}));
+
 import { useSubmitDialog } from "../lib/api/dialog.js";
+import { useFeatures } from "../lib/api/features.js";
 
 const useSubmitDialogMock = vi.mocked(useSubmitDialog);
+const useFeaturesMock = vi.mocked(useFeatures);
 
 interface MockApi {
   mutateAsync: ReturnType<typeof vi.fn>;
@@ -65,13 +72,30 @@ function setupMock(opts: {
     status: "idle",
     submittedAt: 0,
   } as unknown as ReturnType<typeof useSubmitDialog>);
+  // The mention dropdown queries the project's features (feat-039).
+  // Default fixture: empty list, success. Individual tests can override.
+  useFeaturesMock.mockReturnValue({
+    data: [],
+    isPending: false,
+    isError: false,
+    error: null,
+  } as unknown as ReturnType<typeof useFeatures>);
   return { mutateAsync };
+}
+
+function renderWithClient(ui: React.ReactElement) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={qc}>{ui}</QueryClientProvider>,
+  );
 }
 
 describe("<Dialog />", () => {
   test("renders empty-state placeholder when no project is selected", () => {
     setupMock({ resolve: { kind: "chat", text: "" } });
-    render(<Dialog projectId={null} />);
+    renderWithClient(<Dialog projectId={null} />);
     expect(screen.getByTestId("dialog")).toBeInTheDocument();
     expect(screen.getByTestId("dialog-empty")).toHaveTextContent(
       /no messages yet/i,
@@ -82,7 +106,7 @@ describe("<Dialog />", () => {
 
   test("enables the textarea + send button when a project is selected", () => {
     setupMock({ resolve: { kind: "chat", text: "" } });
-    render(<Dialog projectId="proj-1" />);
+    renderWithClient(<Dialog projectId="proj-1" />);
     expect(screen.getByTestId("dialog-textarea")).not.toBeDisabled();
     // Empty draft -> send disabled.
     expect(screen.getByTestId("dialog-send")).toBeDisabled();
@@ -90,7 +114,7 @@ describe("<Dialog />", () => {
 
   test("enables Send when the textarea has non-whitespace content", () => {
     setupMock({ resolve: { kind: "chat", text: "" } });
-    render(<Dialog projectId="proj-1" />);
+    renderWithClient(<Dialog projectId="proj-1" />);
     fireEvent.change(screen.getByTestId("dialog-textarea"), {
       target: { value: "hello" },
     });
@@ -101,7 +125,7 @@ describe("<Dialog />", () => {
     const api = setupMock({
       resolve: { kind: "chat", text: "hi back" },
     });
-    render(<Dialog projectId="proj-1" />);
+    renderWithClient(<Dialog projectId="proj-1" />);
     const textarea = screen.getByTestId("dialog-textarea");
     fireEvent.change(textarea, { target: { value: "hello" } });
     fireEvent.click(screen.getByTestId("dialog-send"));
@@ -116,7 +140,7 @@ describe("<Dialog />", () => {
     const api = setupMock({
       resolve: { kind: "chat", text: "ack" },
     });
-    render(<Dialog projectId="proj-1" />);
+    renderWithClient(<Dialog projectId="proj-1" />);
     const textarea = screen.getByTestId("dialog-textarea");
     fireEvent.change(textarea, { target: { value: "ping" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
@@ -129,7 +153,7 @@ describe("<Dialog />", () => {
     const api = setupMock({
       resolve: { kind: "chat", text: "" },
     });
-    render(<Dialog projectId="proj-1" />);
+    renderWithClient(<Dialog projectId="proj-1" />);
     const textarea = screen.getByTestId("dialog-textarea");
     fireEvent.change(textarea, { target: { value: "line1" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: true });
@@ -140,7 +164,7 @@ describe("<Dialog />", () => {
     const api = setupMock({
       resolve: { kind: "chat", text: "" },
     });
-    render(<Dialog projectId="proj-1" />);
+    renderWithClient(<Dialog projectId="proj-1" />);
     fireEvent.change(screen.getByTestId("dialog-textarea"), {
       target: { value: "   \n  " },
     });
@@ -150,7 +174,7 @@ describe("<Dialog />", () => {
 
   test("the user message and assistant response both appear in the transcript", async () => {
     setupMock({ resolve: { kind: "chat", text: "echo: hello" } });
-    render(<Dialog projectId="proj-1" />);
+    renderWithClient(<Dialog projectId="proj-1" />);
     const textarea = screen.getByTestId("dialog-textarea");
     fireEvent.change(textarea, { target: { value: "hello" } });
     fireEvent.click(screen.getByTestId("dialog-send"));
@@ -168,7 +192,7 @@ describe("<Dialog />", () => {
 
   test("errors are surfaced as a transcript entry, not a thrown promise", async () => {
     setupMock({ reject: new Error("daemon offline") });
-    render(<Dialog projectId="proj-1" />);
+    renderWithClient(<Dialog projectId="proj-1" />);
     fireEvent.change(screen.getByTestId("dialog-textarea"), {
       target: { value: "hi" },
     });
@@ -182,7 +206,7 @@ describe("<Dialog />", () => {
 
   test("the dialog section carries the persistent bottom-dock landmark", () => {
     setupMock({ resolve: { kind: "chat", text: "" } });
-    render(<Dialog projectId="proj-1" />);
+    renderWithClient(<Dialog projectId="proj-1" />);
     const section = screen.getByRole("region", { name: /dialog/i });
     expect(section).toBe(screen.getByTestId("dialog"));
   });

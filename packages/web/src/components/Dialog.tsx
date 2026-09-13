@@ -11,7 +11,7 @@
  *
  * Out of scope for this feature:
  *
- *   - `@feat-XXX` autocomplete → feat-039
+ *   - `@feat-XXX` autocomplete → feat-039 (now wired into this component)
  *   - Draft cards tray + "Confirm all" → feat-040
  *   - Streaming token-by-token render → wired in a later feature
  *     (feat-029 already emits `project.dialog_response` over WS;
@@ -24,10 +24,20 @@
  * a mocked `useSubmitDialog`.
  */
 
-import { useEffect, useRef, useState } from "react";
-import type { DialogResponse } from "@heddle/shared";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { DialogResponse, Feature } from "@heddle/shared";
 
 import { useSubmitDialog } from "../lib/api/dialog.ts";
+import { useFeatures } from "../lib/api/features.ts";
+import {
+  MentionAutocomplete,
+  clampSelection,
+  extractMention,
+  filterFeatures,
+  insertMention,
+  MAX_CANDIDATES,
+  type MentionContext,
+} from "./MentionAutocomplete.tsx";
 
 interface DialogProps {
   projectId: string | null;
@@ -60,9 +70,16 @@ let idCounter = 0;
 
 export function Dialog({ projectId }: DialogProps): React.ReactElement {
   const submit = useSubmitDialog(projectId);
+  const featuresQuery = useFeatures(projectId);
   const [draft, setDraft] = useState<string>("");
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  // Mention-dropdown state. `mention` is the parsed @-token at the
+  // cursor (null when no @ is being typed); `mentionSelected` is the
+  // currently-highlighted row index in the filtered list.
+  const [mention, setMention] = useState<MentionContext | null>(null);
+  const [mentionSelected, setMentionSelected] = useState<number>(0);
 
   // Auto-scroll the transcript to the bottom when a new entry lands.
   useEffect(() => {
@@ -75,6 +92,39 @@ export function Dialog({ projectId }: DialogProps): React.ReactElement {
       ...prev,
       { id: nextId(), at: Date.now(), ...entry },
     ]);
+  }
+
+  // Derived: filtered candidate list for the current mention query.
+  const allFeatures = featuresQuery.data ?? [];
+  const matchedAll = useMemo<Feature[]>(
+    () => (mention ? filterFeatures(allFeatures, mention.query) : []),
+    [allFeatures, mention],
+  );
+  const candidates = useMemo<Feature[]>(
+    () => matchedAll.slice(0, MAX_CANDIDATES),
+    [matchedAll],
+  );
+  // Keep `mentionSelected` inside the new candidate range whenever the
+  // candidate list changes shape (backspace / further typing).
+  useEffect(() => {
+    setMentionSelected((prev) => clampSelection(prev, candidates.length));
+  }, [candidates.length]);
+
+  function applyMention(feature: Feature): void {
+    if (!mention) return;
+    const el = textareaRef.current;
+    if (!el) return;
+    const { content, cursor } = insertMention(draft, mention, feature);
+    setDraft(content);
+    setMention(null);
+    setMentionSelected(0);
+    // Restore focus + cursor after the dropdown swallows focus on click.
+    // requestAnimationFrame waits for React to flush the new `value`
+    // before we move the caret.
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(cursor, cursor);
+    });
   }
 
   async function handleSubmit(): Promise<void> {
@@ -102,6 +152,32 @@ export function Dialog({ projectId }: DialogProps): React.ReactElement {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
+    // While the mention dropdown is open, intercept nav + insert keys.
+    if (mention && candidates.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionSelected((s) =>
+          clampSelection(s + 1, candidates.length),
+        );
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionSelected((s) => clampSelection(s - 1, candidates.length));
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const picked = candidates[mentionSelected];
+        if (picked) applyMention(picked);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMention(null);
+        return;
+      }
+    }
     // Enter submits; Shift+Enter inserts a newline (textarea convention).
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -112,6 +188,7 @@ export function Dialog({ projectId }: DialogProps): React.ReactElement {
   const sending = submit.isPending;
   const canSend =
     !sending && draft.trim().length > 0 && projectId !== null;
+  const showMention = mention !== null && featuresQuery.isSuccess;
 
   return (
     <section
@@ -154,19 +231,37 @@ export function Dialog({ projectId }: DialogProps): React.ReactElement {
         <label className="sr-only" htmlFor="dialog-input">
           Dialog message
         </label>
-        <textarea
-          id="dialog-input"
-          data-testid="dialog-textarea"
-          aria-label="Dialog message"
-          placeholder={projectId ? PLACEHOLDER : "Select a project to chat"}
-          rows={2}
-          maxLength={MAX_MESSAGE_CHARS}
-          value={draft}
-          disabled={!projectId || sending}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={handleKeyDown}
-          className="flex-1 resize-none rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none disabled:opacity-50"
-        />
+        <div className="relative flex-1">
+          <textarea
+            id="dialog-input"
+            ref={textareaRef}
+            data-testid="dialog-textarea"
+            aria-label="Dialog message"
+            placeholder={projectId ? PLACEHOLDER : "Select a project to chat"}
+            rows={2}
+            maxLength={MAX_MESSAGE_CHARS}
+            value={draft}
+            disabled={!projectId || sending}
+            onChange={(e) => {
+              const value = e.target.value;
+              const cursor = e.target.selectionStart ?? value.length;
+              setDraft(value);
+              setMention(extractMention(value, cursor));
+              setMentionSelected(0);
+            }}
+            onKeyDown={handleKeyDown}
+            className="w-full resize-none rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+          />
+          {showMention ? (
+            <MentionAutocomplete
+              candidates={candidates}
+              selected={mentionSelected}
+              totalMatches={matchedAll.length}
+              onHover={setMentionSelected}
+              onSelect={applyMention}
+            />
+          ) : null}
+        </div>
         <button
           type="button"
           data-testid="dialog-send"
