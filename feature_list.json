@@ -1243,13 +1243,21 @@
         "Apply button triggers retry-with-hint per feat-043",
         "Test: invoke diagnose on a failed feature; assert the card renders all three sections"
       ],
-      "status": "pending",
+      "status": "passing",
       "priority": "medium",
       "depends_on": [
         "feat-038",
         "feat-040"
       ],
-      "attempts": [],
+      "attempts": [
+        {
+          "session": null,
+          "by": "coding-agent",
+          "outcome": "passing",
+          "note": "feat-042",
+          "at": "2026-09-13"
+        }
+      ],
       "kind": "feature",
       "fixes": null,
       "enhances": null,
@@ -1598,8 +1606,8 @@
   ],
   "metadata": {
     "total_features": 54,
-    "passing": 39,
-    "failing": 15,
+    "passing": 40,
+    "failing": 14,
     "in_progress": 0,
     "blocked": 0,
     "deferred": 0,

@@ -210,4 +210,52 @@ describe("<Dialog />", () => {
     const section = screen.getByRole("region", { name: /dialog/i });
     expect(section).toBe(screen.getByTestId("dialog"));
   });
+
+  test("the @feat-XXX diagnose shortcut renders a <DiagnosisReport> card", async () => {
+    const api = setupMock({ resolve: { kind: "chat", text: "" } });
+    renderWithClient(<Dialog projectId="proj-1" />);
+    const textarea = screen.getByTestId("dialog-textarea");
+    fireEvent.change(textarea, {
+      target: { value: "@feat-042 diagnose please" },
+    });
+    fireEvent.click(screen.getByTestId("dialog-send"));
+    // Diagnose shortcut short-circuits the mutation; it should not be
+    // called at all.
+    await waitFor(() => {
+      expect(api.mutateAsync).not.toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("diagnosis-report")).toBeInTheDocument();
+    });
+    // The card renders all three sections.
+    expect(screen.getByTestId("diagnosis-cause")).toBeInTheDocument();
+    expect(screen.getByTestId("diagnosis-suggestion")).toBeInTheDocument();
+    expect(screen.getByTestId("diagnosis-diff-section")).toBeInTheDocument();
+    expect(screen.getByTestId("diagnosis-apply")).toBeInTheDocument();
+    // The feature id subtitle is shown.
+    expect(screen.getByTestId("diagnosis-feature-id")).toHaveTextContent(
+      "feat-042",
+    );
+  });
+
+  test("a non-diagnose message still goes through the mutation", async () => {
+    const api = setupMock({
+      resolve: { kind: "chat", text: "plain reply" },
+    });
+    renderWithClient(<Dialog projectId="proj-1" />);
+    const textarea = screen.getByTestId("dialog-textarea");
+    fireEvent.change(textarea, { target: { value: "hello there" } });
+    fireEvent.click(screen.getByTestId("dialog-send"));
+    await waitFor(() => {
+      expect(api.mutateAsync).toHaveBeenCalledWith({
+        message: "hello there",
+      });
+    });
+    expect(screen.queryByTestId("diagnosis-report")).toBeNull();
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("dialog-entry-assistant"),
+      ).toHaveTextContent("plain reply");
+    });
+  });
 });

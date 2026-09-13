@@ -69,7 +69,29 @@ export interface Feature {
 }
 
 /** Dialog response kind from POST /api/projects/:id/dialog. */
-export type DialogKind = "chat" | "work";
+export type DialogKind = "chat" | "work" | "diagnose";
+
+/**
+ * Structured diagnose report returned by the LLM when the user invokes
+ * `@feat-XXX diagnose` (feat-042 / D-035). The card UI renders these
+ * three sections verbatim; `diff` is optional and only present when
+ * the LLM has a concrete edit to propose.
+ *
+ * v0.1 caveat: the daemon does not yet implement diagnose; the dialog
+ * synthesizes a hard-coded example so the card is testable today.
+ * feat-043 will replace the mock with a real `classify_intent()`
+ * handler that returns `kind: "diagnose"` with a real payload.
+ */
+export interface DiagnoseResponse {
+  /** Plain-language cause for the failure (always shown). */
+  cause: string;
+  /** Suggested next action — usually a hint to feed back into retry. */
+  suggestion: string;
+  /** Optional proposed edit. When present, the card renders a
+   *  before/after diff with an "Apply" button (feat-043 wires the
+   *  Apply handler to retry-with-hint). */
+  diff?: string;
+}
 
 /**
  * A draft card returned by the LLM when `kind === "work"`. Becomes a
@@ -91,6 +113,8 @@ export interface DialogResponse {
   kind: DialogKind;
   text: string;
   drafts?: DraftCard[];
+  /** Structured diagnosis payload — present when `kind === "diagnose"`. */
+  diagnosis?: DiagnoseResponse;
 }
 
 /** Body of POST /api/projects/:id/features/:fid/transition. */
