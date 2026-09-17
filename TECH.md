@@ -6,6 +6,9 @@ the heddle project. It complements [`DESIGN.md`](./DESIGN.md):
 - **`DESIGN.md` answers *what* we are building and *why*.**
 - **`TECH.md` answers *how* we are building it** — language, framework,
   library, package layout, interface contract, data model, build & ship.
+- **[`VISUAL_DESIGN.md`](./VISUAL_DESIGN.md) is the visual design system**
+  (colors, typography, components, do/don't) — any UI work references it
+  before reaching for ad-hoc styling.
 
 When a decision is made, append a new entry under **Decisions**. When a
 question is raised but not yet resolved, append it under **Open
@@ -111,7 +114,7 @@ no answer yet) / `parked-by-user` (user explicitly deferred this) /
 
 ## 3. What this document is NOT
 
-- Not a UI mockup (those live in DESIGN.md and the actual frontend code).
+- Not a UI mockup (those live in [`VISUAL_DESIGN.md`](./VISUAL_DESIGN.md) and the actual frontend code).
 - Not a code style guide (that's `HARNESS/CODE_STYLE.md` once filled in).
 - Not a roadmap with timeline estimates.
 - Not a deployment runbook (that's `docs/operations.md`, to be written

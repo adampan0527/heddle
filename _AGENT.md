@@ -31,6 +31,7 @@ agent entry point — just add a row below.
 | Understand safety boundaries (forbidden ops / untrusted input) | [`HARNESS.md` § Forbidden operations + § Trust boundaries](./HARNESS/HARNESS.md) |
 | Understand product scope / intent of any change | [`DESIGN.md`](./DESIGN.md) |
 | Make engineering decisions (tech stack, data model, contracts, packaging) | [`TECH.md`](./TECH.md) |
+| Reference visual design system (colors, typography, components, do/don't) | [`VISUAL_DESIGN.md`](./VISUAL_DESIGN.md) |
 
 Add more rows here as the project grows — e.g. testing, deployment, security.
 
