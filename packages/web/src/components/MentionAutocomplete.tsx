@@ -76,7 +76,7 @@ export function MentionAutocomplete({
         data-testid="mention-empty"
         role="listbox"
         aria-label="Feature mentions"
-        className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-zinc-700 bg-zinc-950 p-2 text-xs text-zinc-500 shadow"
+        className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-hairline-strong bg-surface-card p-2 text-xs text-mute shadow"
       >
         No matching features.
       </div>
@@ -89,7 +89,7 @@ export function MentionAutocomplete({
       data-testid="mention-list"
       role="listbox"
       aria-label="Feature mentions"
-      className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded border border-zinc-700 bg-zinc-950 text-sm shadow"
+      className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-hairline-strong bg-surface-card text-sm shadow"
     >
       {candidates.map((f, idx) => {
         const isSelected = idx === selected;
@@ -108,14 +108,14 @@ export function MentionAutocomplete({
             }}
             onMouseEnter={() => onHover(idx)}
             className={
-              "cursor-pointer px-2 py-1 " +
+              "cursor-pointer px-3 py-1.5 " +
               (isSelected
-                ? "bg-blue-600 text-white"
-                : "text-zinc-100 hover:bg-zinc-800")
+                ? "bg-primary text-on-primary"
+                : "text-ink hover:bg-canvas")
             }
           >
-            <span className="font-mono text-xs">{f.id}</span>
-            <span className="ml-2 truncate text-xs text-zinc-400">
+            <span className="font-code text-xs">{f.id}</span>
+            <span className="ml-2 truncate text-xs text-mute">
               {f.description.length > 60
                 ? f.description.slice(0, 57) + "…"
                 : f.description}

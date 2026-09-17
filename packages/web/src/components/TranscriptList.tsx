@@ -25,7 +25,7 @@ export function TranscriptList({
 }): React.ReactElement {
   if (entries.length === 0) {
     return (
-      <p className="text-zinc-500" data-testid="dialog-empty">
+      <p className="text-ash" data-testid="dialog-empty">
         No messages yet.
       </p>
     );
@@ -42,10 +42,10 @@ export function TranscriptList({
 function TranscriptRow({ entry }: { entry: TranscriptEntry }): React.ReactElement {
   const roleClass =
     entry.role === "user"
-      ? "text-zinc-100"
+      ? "text-ink"
       : entry.role === "assistant"
-        ? "text-blue-300"
-        : "text-red-400";
+        ? "text-primary"
+        : "text-red-700";
   // Look up the parked confirmation request once per row. The hook
   // subscription means cancelling from the card clears the row's
   // card automatically.
@@ -62,7 +62,7 @@ function TranscriptRow({ entry }: { entry: TranscriptEntry }): React.ReactElemen
       data-testid={`dialog-entry-${entry.role}`}
       className={roleClass}
     >
-      <span className="mr-2 text-xs uppercase text-zinc-500">{entry.role}</span>
+      <span className="mr-2 text-xs uppercase text-ash">{entry.role}</span>
       {entry.diagnosis ? (
         <DiagnosisReport
           diagnosis={entry.diagnosis}

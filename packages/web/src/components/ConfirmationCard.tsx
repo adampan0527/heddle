@@ -72,14 +72,14 @@ export function ConfirmationCard({
     <div
       data-testid="confirmation-card"
       data-confirmation-id={confirmationId}
-      className="rounded border border-amber-300 bg-amber-50 p-3 my-2"
+      className="rounded-md border border-amber-700 bg-amber-50 p-3 my-2"
     >
       <div className="font-semibold text-amber-900">
         Confirm destructive {command} on {featureId}?
       </div>
       {diffView && (
         <pre
-          className="text-xs mt-2 bg-white/60 p-2 rounded overflow-x-auto"
+          className="text-xs mt-2 bg-surface-card p-2 rounded overflow-x-auto font-code"
           data-testid="confirmation-diff"
         >
           {diffView}
@@ -104,7 +104,7 @@ export function ConfirmationCard({
           type="button"
           disabled={busy}
           onClick={() => void onConfirm()}
-          className="px-3 py-1 bg-amber-600 text-white rounded text-sm disabled:opacity-50"
+          className="rounded-full bg-amber-700 px-4 py-2 text-on-primary text-sm font-semibold disabled:opacity-50"
           data-testid="confirmation-confirm"
         >
           {busy ? "Working…" : "Confirm"}
@@ -113,7 +113,7 @@ export function ConfirmationCard({
           type="button"
           disabled={busy}
           onClick={onCancel}
-          className="px-3 py-1 bg-white border border-amber-600 text-amber-700 rounded text-sm disabled:opacity-50"
+          className="rounded-full bg-surface-card border border-amber-700 text-amber-900 px-4 py-2 text-sm font-semibold disabled:opacity-50"
           data-testid="confirmation-cancel"
         >
           Cancel

@@ -29,9 +29,9 @@ const LANES: ReadonlyArray<{
   icon: string;
   accent: string;
 }> = [
-  { id: "done", title: "Done", icon: "✓", accent: "text-emerald-400" },
-  { id: "someday", title: "Someday", icon: "?", accent: "text-zinc-400" },
-  { id: "archive", title: "Archive", icon: "\u{1F5C4}", accent: "text-zinc-500" },
+  { id: "done", title: "Done", icon: "✓", accent: "text-badge-success" },
+  { id: "someday", title: "Someday", icon: "?", accent: "text-charcoal" },
+  { id: "archive", title: "Archive", icon: "\u{1F5C4}", accent: "text-ash" },
 ];
 
 const TOOLTIP_TITLE_LIMIT = 3;
@@ -74,7 +74,7 @@ export function KanbanLaneRow({
             topTitlesForTooltip={topTitles}
           >
             {cards.length === 0 ? (
-              <li className="rounded border border-dashed border-zinc-700 p-3 text-center text-xs text-zinc-500">
+              <li className="rounded border border-dashed border-hairline p-3 text-center text-xs text-ash">
                 No features
               </li>
             ) : (

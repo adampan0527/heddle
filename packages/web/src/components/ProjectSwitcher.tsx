@@ -76,8 +76,8 @@ export function ProjectSwitcher(): React.ReactElement {
   if (projects.isPending) {
     return (
       <div className="flex items-center gap-2 text-sm">
-        <span className="text-zinc-400">Project:</span>
-        <span className="text-zinc-500">(loading…)</span>
+        <span className="text-mute">Project:</span>
+        <span className="text-ash">(loading…)</span>
       </div>
     );
   }
@@ -85,8 +85,8 @@ export function ProjectSwitcher(): React.ReactElement {
   if (projects.isError) {
     return (
       <div className="flex items-center gap-2 text-sm">
-        <span className="text-zinc-400">Project:</span>
-        <span className="text-red-400" role="alert">
+        <span className="text-mute">Project:</span>
+        <span className="text-red-700" role="alert">
           (error: {projects.error.message})
         </span>
         <button
@@ -94,7 +94,7 @@ export function ProjectSwitcher(): React.ReactElement {
           onClick={() => {
             void queryClient.invalidateQueries({ queryKey: ["projects"] });
           }}
-          className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
+          className="rounded-full border border-hairline-strong px-3 py-1 text-xs text-charcoal hover:bg-canvas"
         >
           Retry
         </button>
@@ -106,7 +106,7 @@ export function ProjectSwitcher(): React.ReactElement {
   if (sorted.length === 0) {
     return (
       <div className="flex items-center gap-2 text-sm">
-        <span className="text-zinc-400">No projects yet.</span>
+        <span className="text-mute">No projects yet.</span>
         <PickProjectFolderButton />
       </div>
     );
@@ -126,10 +126,10 @@ export function ProjectSwitcher(): React.ReactElement {
         aria-expanded={open}
         aria-label={`Active project: ${label}`}
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded border border-zinc-700 bg-zinc-900 px-3 py-1 text-sm text-zinc-100 hover:border-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="flex items-center gap-2 rounded-full border border-hairline-strong bg-surface-card px-4 py-2 text-sm text-ink hover:border-ink focus:outline-none focus:ring-2 focus:ring-ring-focus"
       >
         <span>{label}</span>
-        <span aria-hidden="true" className="text-zinc-500">
+        <span aria-hidden="true" className="text-ash">
           ▾
         </span>
       </button>
@@ -139,7 +139,7 @@ export function ProjectSwitcher(): React.ReactElement {
           ref={panelRef}
           role="menu"
           aria-label="Registered projects"
-          className="absolute right-0 z-10 mt-1 min-w-[16rem] rounded border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
+          className="absolute right-0 z-10 mt-1 min-w-[16rem] rounded-md border border-hairline-strong bg-surface-card py-1 shadow-lg"
         >
           {sorted.map((p) => {
             const isActive = p.id === activeProjectId;
@@ -155,18 +155,18 @@ export function ProjectSwitcher(): React.ReactElement {
                 }}
                 className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-sm ${
                   isActive
-                    ? "border-l-2 border-blue-500 bg-zinc-800 text-zinc-100"
-                    : "border-l-2 border-transparent text-zinc-200 hover:bg-zinc-800"
+                    ? "border-l-2 border-primary bg-surface-bone text-ink"
+                    : "border-l-2 border-transparent text-body hover:bg-canvas"
                 }`}
               >
                 <span className="truncate">{p.name}</span>
-                <span className="text-xs text-zinc-500" aria-hidden="true">
+                <span className="text-xs text-ash" aria-hidden="true">
                   {p.path}
                 </span>
               </button>
             );
           })}
-          <div className="border-t border-zinc-800 px-3 py-2">
+          <div className="border-t border-hairline px-3 py-2">
             <PickProjectFolderButton />
           </div>
         </div>

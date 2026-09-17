@@ -85,10 +85,10 @@ export function KanbanLane({
     <section
       aria-label={`${title} lane`}
       data-lane-id={laneId}
-      className="flex flex-col rounded border border-zinc-800 bg-zinc-900"
+      className="flex flex-col rounded-md border border-hairline bg-surface-card"
     >
       <header
-        className={`flex items-center justify-between border-b border-zinc-800 px-3 py-1.5 text-sm ${accent}`}
+        className={`flex items-center justify-between border-b border-hairline px-3 py-1.5 text-sm ${accent}`}
       >
         <button
           type="button"
@@ -99,7 +99,7 @@ export function KanbanLane({
         >
           <span>{label}</span>
           <span
-            className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400"
+            className="rounded-full bg-surface-bone px-2 py-0.5 text-xs text-charcoal"
             title={tooltipText || undefined}
           >
             {count}

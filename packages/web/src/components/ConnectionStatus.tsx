@@ -31,10 +31,10 @@ const STATE_LABEL: Record<WsState, string> = {
 };
 
 const STATE_DOT: Record<WsState, string> = {
-  connecting: "bg-zinc-500",
-  open: "bg-emerald-500",
+  connecting: "bg-ash",
+  open: "bg-badge-success",
   reconnecting: "bg-amber-500",
-  closed: "bg-red-500",
+  closed: "bg-red-700",
 };
 
 export function ConnectionStatus({ client }: Props): React.ReactElement {
@@ -54,7 +54,7 @@ export function ConnectionStatus({ client }: Props): React.ReactElement {
       role="status"
       aria-live="polite"
       aria-label={`WebSocket ${STATE_LABEL[state]}`}
-      className="flex items-center gap-2 text-xs text-zinc-400"
+      className="flex items-center gap-2 text-xs text-charcoal"
       data-state={state}
     >
       <span className={`h-2 w-2 rounded-full ${STATE_DOT[state]}`} aria-hidden="true" />

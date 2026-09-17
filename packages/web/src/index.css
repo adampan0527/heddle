@@ -3,20 +3,115 @@
  *
  * Tailwind v4 entry stylesheet.
  *
- * CSS-first config (no tailwind.config.js). Brand design tokens will
- * land here in feat-034+; for feat-032 we ship a single token to
- * prove the pipeline.
+ * CSS-first config (no tailwind.config.js). The `@theme` block below
+ * is the **single source of truth** for visual design tokens — it
+ * mirrors VISUAL_DESIGN.md at the repo root.
+ *
+ * Token naming:
+ *   - `--color-*`     colors (canvas / surface / ink / primary / …)
+ *   - `--font-*`      font families (display / body / code)
+ *   - `--radius-*`    border radius scale (xs / sm / md / lg / full)
+ *
+ * Tailwind v4 auto-exposes each as a utility class (`bg-canvas`,
+ * `text-ink`, `font-display`, `rounded-md`, …). Components reach
+ * for those utilities — never raw hex, never the Tailwind built-in
+ * zinc/blue/amber palettes.
+ *
+ * Status hex tokens (`--color-status-*`) are used by DAG node inline
+ * styles (see dag-view-helpers.ts). ReactFlow can't read CSS variables
+ * reliably across all browsers, so these stay as hex literals.
  */
 
 @import "tailwindcss";
 
 @theme {
-  --color-heddle-bg: #0b0d10;
+  /* -- Brand & Accent (from VISUAL_DESIGN.md § colors) -- */
+  --color-primary: #ea2804;
+  --color-primary-deep: #c01f00;
+  --color-on-primary: #ffffff;
+  --color-link: #ea2804;
+
+  /* -- Ink / text on cream surfaces -- */
+  --color-ink: #202020;
+  --color-body: #3a3a3a;
+  --color-charcoal: #575757;
+  --color-mute: #646464;
+  --color-ash: #8d8d8d;
+  --color-stone: #bbbbbb;
+
+  /* -- Surfaces -- */
+  --color-canvas: #f9f7f3;
+  --color-surface-bone: #f3f0e8;
+  --color-surface-card: #ffffff;
+  --color-surface-dark: #202020;
+  --color-surface-deep: #000000;
+
+  /* -- On-dark tokens (for code wells, dark footer) -- */
+  --color-on-dark: #fcfcfc;
+  --color-on-dark-mute: rgba(252, 252, 252, 0.72);
+
+  /* -- Hero / atmospheric -- */
+  --color-hero-warm: #ea2804;
+  --color-hero-glow: #ff6a3d;
+  --color-hero-pink: #f4a8a0;
+
+  /* -- Semantic (success / focus) -- */
+  --color-badge-success: #2b9a66;
+  --color-ring-focus: rgba(59, 130, 246, 0.5);
+  --color-github-dark: #24292e;
+
+  /* -- Dividers -- */
+  --color-hairline: rgba(32, 32, 32, 0.12);
+  --color-hairline-strong: #202020;
+  --color-divider-dark: rgba(255, 255, 255, 0.2);
+
+  /* -- Status hex tokens for DAG nodes (ReactFlow inline styles) -- */
+  /* Fills are cream-palette tints; borders are the saturated accents. */
+  --color-status-pending: #e7e3d8;
+  --color-status-pending-border: #a8a195;
+  --color-status-in-progress: #fff1eb;
+  --color-status-in-progress-border: #ea2804;
+  --color-status-blocked: #fbe7d8;
+  --color-status-blocked-border: #b45309;
+  --color-status-deferred: #ece9df;
+  --color-status-deferred-border: #a8a195;
+  --color-status-passing: #e1f0e8;
+  --color-status-passing-border: #2b9a66;
+
+  /* -- Typography (open-source substitutes per VISUAL_DESIGN §
+       "Note on Font Substitutes") -- */
+  --font-display: "Bricolage Grotesque", ui-serif, Georgia, serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-code: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* -- Rounded scale (from VISUAL_DESIGN § rounded) -- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
 }
 
-body {
-  background-color: var(--color-heddle-bg);
-  color: #e8eaed;
-  font-family: ui-sans-serif, system-ui, sans-serif;
-  margin: 0;
+/* Base typography defaults — components don't need to opt-in. */
+@layer base {
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    margin: 0;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+  code,
+  pre {
+    font-family: var(--font-code);
+  }
+  ::placeholder {
+    color: var(--color-mute);
+  }
 }

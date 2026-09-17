@@ -84,9 +84,9 @@ const COLUMNS: ReadonlyArray<{
   title: string;
   accent: string;
 }> = [
-  { id: "in_progress", title: "In progress", accent: "text-blue-400" },
-  { id: "ready", title: "Ready", accent: "text-zinc-300" },
-  { id: "blocked", title: "Blocked", accent: "text-amber-400" },
+  { id: "in_progress", title: "In progress", accent: "text-primary" },
+  { id: "ready", title: "Ready", accent: "text-charcoal" },
+  { id: "blocked", title: "Blocked", accent: "text-amber-900" },
 ];
 
 /**
@@ -234,7 +234,7 @@ export function Kanban({ projectId }: KanbanProps): React.ReactElement {
     return (
       <div
         aria-label="Kanban placeholder"
-        className="flex flex-1 items-center justify-center rounded border border-dashed border-zinc-700 text-zinc-500"
+        className="flex flex-1 items-center justify-center rounded-md border border-dashed border-hairline text-ash"
       >
         Select a project to view its kanban.
       </div>
@@ -243,7 +243,7 @@ export function Kanban({ projectId }: KanbanProps): React.ReactElement {
 
   if (features.isPending) {
     return (
-      <div className="flex flex-1 items-center justify-center text-zinc-500">
+      <div className="flex flex-1 items-center justify-center text-ash">
         Loading features…
       </div>
     );
@@ -253,7 +253,7 @@ export function Kanban({ projectId }: KanbanProps): React.ReactElement {
     return (
       <div
         role="alert"
-        className="flex flex-1 items-center justify-center text-red-400"
+        className="flex flex-1 items-center justify-center text-red-700"
       >
         Error: {features.error.message}
       </div>
@@ -287,7 +287,7 @@ export function Kanban({ projectId }: KanbanProps): React.ReactElement {
     >
       <div className="flex flex-1 flex-col gap-4" aria-label="Kanban board wrapper">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-charcoal">
             Kanban
           </h2>
           <div className="flex items-center gap-2">
@@ -298,10 +298,10 @@ export function Kanban({ projectId }: KanbanProps): React.ReactElement {
               aria-label={dagViewOpen ? "Close DAG view" : "Open DAG view"}
               aria-pressed={dagViewOpen}
               onClick={toggleDagView}
-              className={`rounded border px-2 py-1 text-xs ${
+              className={`rounded-full border px-3 py-1 text-xs ${
                 dagViewOpen
-                  ? "border-blue-500 bg-blue-950 text-blue-200"
-                  : "border-zinc-700 hover:bg-zinc-800"
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-hairline-strong text-charcoal hover:bg-canvas"
               }`}
             >
               {dagViewOpen ? "Hide DAG" : "Show DAG"}
@@ -323,7 +323,7 @@ export function Kanban({ projectId }: KanbanProps): React.ReactElement {
                 accent={c.accent}
               >
                 {cards.length === 0 ? (
-                  <li className="rounded border border-dashed border-zinc-700 p-4 text-center text-xs text-zinc-500">
+                  <li className="rounded border border-dashed border-hairline p-4 text-center text-xs text-ash">
                     No features
                   </li>
                 ) : (

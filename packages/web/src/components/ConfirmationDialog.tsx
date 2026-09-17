@@ -73,30 +73,30 @@ export function ConfirmationDialog({
       className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 p-4"
       data-testid="sandbox-confirm-dialog"
     >
-      <div className="w-full max-w-md rounded border border-amber-700 bg-zinc-900 p-4 shadow-2xl">
+      <div className="w-full max-w-md rounded-md border border-hairline-strong bg-surface-card p-4 shadow-2xl">
         <h2
           id="sandbox-confirm-title"
-          className="text-sm font-semibold text-amber-200"
+          className="text-sm font-semibold text-amber-900"
         >
           Sandbox asks: allow {toolName}?
         </h2>
-        <p className="mt-2 text-xs text-zinc-300">
+        <p className="mt-2 text-xs text-charcoal">
           The current project is set to{" "}
-          <code className="rounded bg-zinc-800 px-1 text-amber-200">
+          <code className="rounded bg-surface-bone px-1 text-amber-900 font-code">
             edit-with-confirm
           </code>
           . Destructive tool calls require your explicit approval before
           they run.
         </p>
         <pre
-          className="mt-3 max-h-40 overflow-auto rounded bg-zinc-950 p-2 text-[11px] text-zinc-300"
+          className="mt-3 max-h-40 overflow-auto rounded bg-canvas p-2 text-[11px] text-charcoal font-code"
           data-testid="sandbox-confirm-args"
         >
           {prettyArgs(args)}
         </pre>
         {error && (
           <div
-            className="mt-2 rounded border border-red-700 bg-red-900/40 p-2 text-xs text-red-200"
+            className="mt-2 rounded border border-red-700 bg-red-50 p-2 text-xs text-red-700"
             data-testid="sandbox-confirm-error"
           >
             {error}
@@ -107,7 +107,7 @@ export function ConfirmationDialog({
             type="button"
             disabled={busy}
             onClick={onCancel}
-            className="rounded border border-zinc-700 bg-zinc-800 px-3 py-1 text-xs text-zinc-200 hover:border-zinc-600 disabled:opacity-50"
+            className="rounded-full border border-hairline-strong bg-surface-card px-3 py-1 text-xs text-charcoal hover:bg-canvas disabled:opacity-50"
             data-testid="sandbox-confirm-cancel"
           >
             Cancel
@@ -116,7 +116,7 @@ export function ConfirmationDialog({
             type="button"
             disabled={busy}
             onClick={onDeny}
-            className="rounded border border-rose-700 bg-rose-900/40 px-3 py-1 text-xs text-rose-200 hover:border-rose-600 disabled:opacity-50"
+            className="rounded-full border border-red-700 bg-red-50 px-3 py-1 text-xs text-red-700 hover:bg-red-100 disabled:opacity-50"
             data-testid="sandbox-confirm-deny"
           >
             Deny
@@ -125,7 +125,7 @@ export function ConfirmationDialog({
             type="button"
             disabled={busy}
             onClick={() => void handleApprove()}
-            className="rounded bg-emerald-600 px-3 py-1 text-xs font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
+            className="rounded-full bg-badge-success px-4 py-1 text-xs font-semibold text-on-primary hover:opacity-90 disabled:opacity-50"
             data-testid="sandbox-confirm-approve"
           >
             {busy ? "Working…" : "Approve"}

@@ -103,7 +103,7 @@ export function SandboxIndicator({
           aria-label={`Sandbox level: ${label}`}
           onClick={() => setOpen((o) => !o)}
           disabled={mutation.isPending}
-          className={`flex items-center gap-2 rounded border px-3 py-1 text-xs font-medium ${badgeClass} disabled:opacity-60`}
+          className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium ${badgeClass} disabled:opacity-60`}
           data-testid="sandbox-badge"
           data-level={level}
         >
@@ -118,7 +118,7 @@ export function SandboxIndicator({
             ref={panelRef}
             role="menu"
             aria-label="Sandbox level"
-            className="absolute right-0 z-20 mt-1 min-w-[14rem] rounded border border-zinc-700 bg-zinc-900 py-1 shadow-lg"
+            className="absolute right-0 z-20 mt-1 min-w-[14rem] rounded-md border border-hairline-strong bg-surface-card py-1 shadow-lg"
           >
             {SANDBOX_LEVELS.map((opt) => (
               <button
@@ -129,13 +129,13 @@ export function SandboxIndicator({
                 onClick={() => void pickLevel(opt)}
                 className={`flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-xs ${
                   opt === level
-                    ? "border-l-2 border-blue-500 bg-zinc-800 text-zinc-100"
-                    : "border-l-2 border-transparent text-zinc-200 hover:bg-zinc-800"
+                    ? "border-l-2 border-primary bg-surface-bone text-ink"
+                    : "border-l-2 border-transparent text-body hover:bg-canvas"
                 }`}
                 data-testid={`sandbox-option-${opt}`}
               >
                 <span className="font-medium">{labelFor(opt)}</span>
-                <span className="text-[10px] text-zinc-500">{hintFor(opt)}</span>
+                <span className="text-[10px] text-ash">{hintFor(opt)}</span>
               </button>
             ))}
           </div>
@@ -145,7 +145,7 @@ export function SandboxIndicator({
         <button
           type="button"
           onClick={onTestDestructive}
-          className="rounded border border-amber-700 bg-amber-900/30 px-2 py-1 text-xs text-amber-200 hover:bg-amber-900/50"
+          className="rounded-full border border-amber-700 bg-amber-50 px-3 py-1 text-xs text-amber-900 hover:bg-amber-100"
           data-testid="sandbox-test-destructive"
         >
           Test destructive action
@@ -191,10 +191,10 @@ function iconFor(level: SandboxLevel): string {
 function badgeColorClass(level: SandboxLevel): string {
   switch (level) {
     case "read-only":
-      return "border-zinc-600 bg-zinc-800 text-zinc-200 hover:border-zinc-500";
+      return "border-stone bg-surface-bone text-charcoal hover:border-ash";
     case "edit-with-confirm":
-      return "border-amber-700 bg-amber-900/40 text-amber-200 hover:border-amber-600";
+      return "border-amber-700 bg-amber-50 text-amber-900 hover:border-amber-600";
     case "full":
-      return "border-emerald-700 bg-emerald-900/40 text-emerald-200 hover:border-emerald-600";
+      return "border-badge-success bg-emerald-50 text-emerald-900 hover:border-badge-success";
   }
 }

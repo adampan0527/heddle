@@ -132,13 +132,13 @@ export function Dialog({ projectId }: DialogProps): React.ReactElement {
     <section
       aria-label="Dialog"
       data-testid="dialog"
-      className="flex shrink-0 flex-col gap-2 rounded border border-zinc-800 bg-zinc-900 p-3"
+      className="flex shrink-0 flex-col gap-2 rounded-md border border-hairline-strong bg-surface-card p-3"
     >
       <div
         ref={transcriptRef}
         aria-label="Dialog transcript"
         data-testid="dialog-transcript"
-        className="h-40 overflow-y-auto rounded border border-zinc-800 bg-zinc-950 p-2 text-sm"
+        className="h-40 overflow-y-auto rounded-md border border-hairline bg-canvas p-2 text-sm"
       >
         <TranscriptList entries={transcript} />
       </div>
@@ -165,7 +165,7 @@ export function Dialog({ projectId }: DialogProps): React.ReactElement {
               setMentionSelected(0);
             }}
             onKeyDown={handleKeyDown}
-            className="w-full resize-none rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+            className="w-full resize-none rounded-full border border-hairline-strong bg-surface-card px-4 py-2 text-sm text-ink placeholder:text-mute focus:border-primary focus:outline-none disabled:opacity-50"
           />
           {showMention ? (
             <MentionAutocomplete
@@ -185,7 +185,7 @@ export function Dialog({ projectId }: DialogProps): React.ReactElement {
           onClick={() => {
             void submit(draft);
           }}
-          className="shrink-0 rounded border border-zinc-700 bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="shrink-0 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-deep disabled:cursor-not-allowed disabled:opacity-50"
         >
           {sending ? "Sending…" : "Send"}
         </button>

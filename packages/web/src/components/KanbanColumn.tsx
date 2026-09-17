@@ -49,15 +49,15 @@ export function KanbanColumn({
   return (
     <section
       aria-label={`${title} column`}
-      className={`flex min-h-[24rem] flex-col rounded border bg-zinc-900 ${
-        highlighted ? "border-blue-500" : "border-zinc-800"
+      className={`flex min-h-[24rem] flex-col rounded-md border bg-surface-card ${
+        highlighted ? "border-primary" : "border-hairline"
       }`}
     >
       <header
-        className={`flex items-center justify-between border-b border-zinc-800 px-3 py-2 text-sm ${accent}`}
+        className={`flex items-center justify-between border-b border-hairline px-3 py-2 text-sm ${accent}`}
       >
         <span className="font-semibold uppercase tracking-wide">{title}</span>
-        <span className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400">
+        <span className="rounded-full bg-surface-bone px-2 py-0.5 text-xs text-charcoal">
           {count}
         </span>
       </header>

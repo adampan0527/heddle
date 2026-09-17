@@ -36,12 +36,20 @@ interface KanbanCardProps {
   feature: Feature;
 }
 
+/**
+ * Status badge color map — lifted onto the cream theme. Tones follow
+ * VISUAL_DESIGN § colors (semantic tokens):
+ *   - pending / deferred → neutral bone surface
+ *   - in_progress       → primary brand orange (in motion)
+ *   - blocked           → amber warning
+ *   - passing           → emerald success
+ */
 const STATUS_BADGE: Record<FeatureStatus, string> = {
-  pending: "bg-zinc-700 text-zinc-300",
-  in_progress: "bg-blue-900 text-blue-200",
-  blocked: "bg-amber-900 text-amber-200",
-  deferred: "bg-zinc-700 text-zinc-400",
-  passing: "bg-emerald-900 text-emerald-200",
+  pending: "bg-surface-bone text-charcoal",
+  in_progress: "bg-primary/10 text-primary",
+  blocked: "bg-amber-50 text-amber-900",
+  deferred: "bg-surface-bone text-mute",
+  passing: "bg-emerald-50 text-emerald-900",
 };
 
 // --- kind display (Task 1) ---
@@ -59,8 +67,8 @@ const KIND_DISPLAY: Record<string, KindDisplay> = {
   feature: { icon: "", accent: "", leftBorder: "" },
   bugfix: {
     icon: "\u{1F527}",
-    accent: "text-orange-400",
-    leftBorder: "border-l-4 border-orange-500",
+    accent: "text-primary",
+    leftBorder: "border-l-4 border-primary",
   },
   enhancement: { icon: "", accent: "", leftBorder: "" },
 };
@@ -165,14 +173,14 @@ export function KanbanCard({ feature }: KanbanCardProps): React.ReactElement {
       data-status={feature.status}
       data-kind={feature.kind}
       data-status-extras={extras ? "true" : "false"}
-      className={`cursor-grab select-none rounded border border-zinc-700 bg-zinc-800 p-2 text-sm text-zinc-100 shadow-sm transition-opacity ${
+      className={`cursor-grab select-none rounded-md border border-hairline bg-surface-card p-3 text-sm text-ink shadow-sm transition-opacity ${
         k.leftBorder
       } ${isDragging || storeDragging ? "opacity-50" : "opacity-100"}`}
       {...attributes}
       {...listeners}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-xs text-zinc-500">{feature.id}</span>
+        <span className="font-code text-xs text-ash">{feature.id}</span>
         <span className="flex items-center gap-1">
           {k.icon ? (
             <span
@@ -183,18 +191,18 @@ export function KanbanCard({ feature }: KanbanCardProps): React.ReactElement {
             </span>
           ) : null}
           <span
-            className={`rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${STATUS_BADGE[feature.status]}`}
+            className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide ${STATUS_BADGE[feature.status]}`}
           >
             {feature.status.replace("_", " ")}
           </span>
           {extras ? (
-            <span className="ml-1 text-xs text-zinc-400">
+            <span className="ml-1 text-xs text-charcoal">
               {extras.icon} {extras.text}
             </span>
           ) : null}
         </span>
       </div>
-      <p className="mt-1 line-clamp-2 text-sm text-zinc-200">{feature.description}</p>
+      <p className="mt-1 line-clamp-2 text-sm text-body">{feature.description}</p>
     </li>
   );
 }

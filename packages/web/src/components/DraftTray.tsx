@@ -79,16 +79,16 @@ export function DraftTray({ projectId }: DraftTrayProps): React.ReactElement | n
     <section
       aria-label="Draft tray"
       data-testid="draft-tray"
-      className="flex flex-col gap-2 rounded border border-amber-700 bg-amber-950/40 p-3"
+      className="flex flex-col gap-2 rounded-md border border-amber-700 bg-amber-50 p-3"
     >
       <header className="flex items-center justify-between">
         <h2
-          className="text-sm font-semibold text-amber-200"
+          className="text-sm font-semibold text-amber-900"
           data-testid="draft-tray-title"
         >
           Draft cards ({list.length})
         </h2>
-        <span className="text-xs text-amber-300/70" data-testid="draft-tray-count">
+        <span className="text-xs text-amber-700" data-testid="draft-tray-count">
           {selectedIds.length} kept
         </span>
       </header>
@@ -110,7 +110,7 @@ export function DraftTray({ projectId }: DraftTrayProps): React.ReactElement | n
           aria-label="Cancel draft tray"
           disabled={isConfirming}
           onClick={handleCancel}
-          className="rounded border border-zinc-700 bg-zinc-900 px-3 py-1 text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-full border border-hairline-strong bg-surface-card px-3 py-1 text-sm text-charcoal hover:bg-canvas disabled:cursor-not-allowed disabled:opacity-50"
         >
           Cancel
         </button>
@@ -120,7 +120,7 @@ export function DraftTray({ projectId }: DraftTrayProps): React.ReactElement | n
           aria-label={`Confirm all (${selectedIds.length})`}
           disabled={selectedIds.length === 0 || isConfirming || !projectId}
           onClick={handleConfirm}
-          className="rounded border border-blue-600 bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-deep disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isConfirming ? "Confirming…" : `Confirm all (${selectedIds.length})`}
         </button>
@@ -142,7 +142,7 @@ function DraftRow({ draft, kept, onToggle, disabled }: DraftRowProps): React.Rea
     <li
       data-testid="draft-row"
       data-draft-id={draft.id}
-      className="flex items-start gap-2 rounded border border-zinc-700 bg-zinc-900 p-2"
+      className="flex items-start gap-2 rounded-md border border-hairline-strong bg-surface-card p-2"
     >
       <input
         type="checkbox"
@@ -151,32 +151,32 @@ function DraftRow({ draft, kept, onToggle, disabled }: DraftRowProps): React.Rea
         checked={kept}
         disabled={disabled}
         onChange={onToggle}
-        className="mt-1 h-4 w-4 shrink-0 accent-blue-500"
+        className="mt-1 h-4 w-4 shrink-0 accent-primary"
       />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex items-center gap-2">
           <span
             data-testid="draft-temp-id"
-            className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-300"
+            className="rounded-full bg-surface-bone px-2 py-0.5 text-xs text-charcoal"
           >
             {draft.id}
           </span>
           <span
-            className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs uppercase text-zinc-400"
+            className="rounded-full bg-surface-bone px-2 py-0.5 text-xs uppercase text-mute"
             data-testid="draft-kind"
           >
             {KIND_LABEL[draft.kind] ?? draft.kind}
           </span>
           <h3
             data-testid="draft-title"
-            className="truncate text-sm font-medium text-zinc-100"
+            className="truncate text-sm font-medium text-ink"
           >
             {draft.title}
           </h3>
         </div>
         <p
           data-testid="draft-description"
-          className="line-clamp-2 text-xs text-zinc-400"
+          className="line-clamp-2 text-xs text-charcoal"
         >
           {descriptionPreview}
           {draft.description.length > 140 ? "…" : ""}

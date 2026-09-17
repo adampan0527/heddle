@@ -113,7 +113,7 @@ export function PickProjectFolderButton(): React.ReactElement {
         aria-label="Add project folder"
       >
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-zinc-400">Absolute path to project folder:</span>
+          <span className="text-charcoal">Absolute path to project folder:</span>
           <input
             type="text"
             value={pathDraft}
@@ -121,13 +121,13 @@ export function PickProjectFolderButton(): React.ReactElement {
             disabled={submitting}
             placeholder="/Users/me/code/my-project"
             autoFocus
-            className="w-80 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+            className="w-80 rounded-full border border-hairline-strong bg-surface-card px-4 py-2 text-ink focus:outline-none focus:ring-2 focus:ring-ring-focus disabled:opacity-50"
           />
         </label>
         <button
           type="submit"
           disabled={submitting}
-          className="rounded bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+          className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-deep disabled:opacity-50"
         >
           {submitting ? "Adding…" : "Add"}
         </button>
@@ -135,7 +135,7 @@ export function PickProjectFolderButton(): React.ReactElement {
           type="button"
           onClick={onCancel}
           disabled={submitting}
-          className="rounded border border-zinc-700 px-3 py-1 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+          className="rounded-full border border-hairline-strong px-4 py-2 text-sm text-charcoal hover:bg-canvas disabled:opacity-50"
         >
           Cancel
         </button>
@@ -146,20 +146,20 @@ export function PickProjectFolderButton(): React.ReactElement {
   if (status.kind === "error") {
     return (
       <div className="flex items-center gap-2 text-sm">
-        <span className="text-red-400" role="alert">
+        <span className="text-red-700" role="alert">
           {status.message}
         </span>
         <button
           type="button"
           onClick={onClick}
-          className="rounded border border-zinc-700 px-3 py-1 text-sm text-zinc-300 hover:bg-zinc-800"
+          className="rounded-full border border-hairline-strong px-3 py-1 text-sm text-charcoal hover:bg-canvas"
         >
           Retry
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded border border-zinc-700 px-3 py-1 text-sm text-zinc-300 hover:bg-zinc-800"
+          className="rounded-full border border-hairline-strong px-3 py-1 text-sm text-charcoal hover:bg-canvas"
         >
           Cancel
         </button>
@@ -171,7 +171,7 @@ export function PickProjectFolderButton(): React.ReactElement {
     <button
       type="button"
       onClick={onClick}
-      className="rounded bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-500"
+      className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:bg-primary-deep"
     >
       Pick a project folder
     </button>

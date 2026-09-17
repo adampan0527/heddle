@@ -217,7 +217,7 @@ describe("<KanbanLane />", () => {
         laneId="done"
         title="Done"
         icon="✓"
-        accent="text-emerald-400"
+        accent="text-badge-success"
         count={3}
         topTitlesForTooltip={["a", "b", "c"]}
       >
@@ -234,7 +234,7 @@ describe("<KanbanLane />", () => {
         laneId="someday"
         title="Someday"
         icon="?"
-        accent="text-zinc-400"
+        accent="text-charcoal"
         count={3}
         topTitlesForTooltip={["a", "b", "c"]}
       >
@@ -252,7 +252,7 @@ describe("<KanbanLane />", () => {
         laneId="archive"
         title="Archive"
         icon="\u{1F5C4}"
-        accent="text-zinc-500"
+        accent="text-ash"
         count={0}
         topTitlesForTooltip={[]}
       >
@@ -268,7 +268,7 @@ describe("<KanbanLane />", () => {
         laneId="someday"
         title="Someday"
         icon="?"
-        accent="text-zinc-400"
+        accent="text-charcoal"
         count={3}
         topTitlesForTooltip={["a", "b", "c"]}
       >
@@ -292,7 +292,7 @@ describe("<KanbanLane />", () => {
         laneId="someday"
         title="Someday"
         icon="?"
-        accent="text-zinc-400"
+        accent="text-charcoal"
         count={3}
         topTitlesForTooltip={[]}
       >
@@ -308,7 +308,7 @@ describe("<KanbanLane />", () => {
         laneId="someday"
         title="Someday"
         icon="?"
-        accent="text-zinc-400"
+        accent="text-charcoal"
         count={4}
         topTitlesForTooltip={[
           "first deferred",
@@ -334,7 +334,7 @@ describe("<KanbanLane />", () => {
         laneId="done"
         title="Done"
         icon="✓"
-        accent="text-emerald-400"
+        accent="text-badge-success"
         count={2}
         topTitlesForTooltip={["x", "y"]}
       >
@@ -352,7 +352,7 @@ describe("<KanbanLane />", () => {
         laneId="done"
         title="Done"
         icon="✓"
-        accent="text-emerald-400"
+        accent="text-badge-success"
         count={0}
         topTitlesForTooltip={[]}
       >
@@ -374,7 +374,7 @@ describe("<KanbanLane />", () => {
         laneId="someday"
         title="Someday"
         icon="?"
-        accent="text-zinc-400"
+        accent="text-charcoal"
         count={1}
         topTitlesForTooltip={["a"]}
       >

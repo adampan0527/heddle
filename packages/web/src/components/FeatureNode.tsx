@@ -38,9 +38,9 @@ function FeatureNodeImpl({
 }: NodeProps<FeatureNodeData>): React.ReactElement {
   const focused = data.focusedId != null && data.focusedId !== data.id;
   const opacity = focused ? 0.3 : (data.opacity ?? 1);
-  const fill = STATUS_COLOR[data.status as keyof typeof STATUS_COLOR] ?? "#3f3f46";
+  const fill = STATUS_COLOR[data.status as keyof typeof STATUS_COLOR] ?? "#e7e3d8";
   const border =
-    STATUS_BORDER[data.status as keyof typeof STATUS_BORDER] ?? "#71717a";
+    STATUS_BORDER[data.status as keyof typeof STATUS_BORDER] ?? "#a8a195";
   return (
     <div
       data-feature-id={data.id}
@@ -51,9 +51,9 @@ function FeatureNodeImpl({
         height: NODE_HEIGHT,
         background: fill,
         border: `2px solid ${border}`,
-        borderRadius: 8,
+        borderRadius: 10,
         opacity,
-        color: "#f4f4f5",
+        color: "#202020",
         fontSize: 12,
         padding: 8,
         display: "flex",
@@ -63,13 +63,15 @@ function FeatureNodeImpl({
       }}
     >
       <Handle type="target" position={Position.Left} />
-      <span style={{ fontFamily: "monospace", fontSize: 11 }}>{data.id}</span>
+      <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11 }}>
+        {data.id}
+      </span>
       <span
         style={{
           fontSize: 10,
           textTransform: "uppercase",
           letterSpacing: 0.5,
-          opacity: 0.85,
+          opacity: 0.7,
         }}
       >
         {data.status.replace("_", " ")}

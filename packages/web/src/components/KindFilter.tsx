@@ -99,14 +99,14 @@ export function KindFilter(): React.ReactElement {
   // intentionally omitted; `DEFAULT_KIND_FILTER` guarantees one of
   // the four OPTIONS always matches.
   return (
-    <label className="flex items-center gap-1 text-xs text-zinc-400">
+    <label className="flex items-center gap-1 text-xs text-charcoal">
       <span className="sr-only">Filter by kind</span>
       <select
         data-testid="kind-filter"
         aria-label="Filter by kind"
         value={value}
         onChange={onChange}
-        className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        className="rounded-full border border-hairline-strong bg-surface-card px-3 py-1 text-xs text-ink hover:bg-canvas focus:outline-none focus:ring-1 focus:ring-ring-focus"
       >
         {OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>

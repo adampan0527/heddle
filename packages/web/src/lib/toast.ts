@@ -35,10 +35,10 @@ function showToast(message: string, tone: "error" | "info"): void {
   const el = document.createElement("div");
   el.setAttribute("role", tone === "error" ? "alert" : "status");
   el.textContent = message;
-  const bg = tone === "error" ? "bg-red-900" : "bg-zinc-800";
+  const bg = tone === "error" ? "bg-red-50 text-red-700" : "bg-surface-card text-ink";
   el.className =
-    `fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded border ` +
-    `border-zinc-700 ${bg} px-4 py-2 text-sm text-zinc-100 shadow-lg`;
+    `fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-md border ` +
+    `border-hairline-strong ${bg} px-4 py-2 text-sm shadow-lg`;
   document.body.appendChild(el);
   currentToast = el;
   currentTimer = setTimeout(clearCurrent, TOAST_TTL_MS);

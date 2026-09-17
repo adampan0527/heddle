@@ -70,8 +70,8 @@ export default function App(): React.ReactElement {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-zinc-800 px-6 py-3">
-        <h1 className="text-lg font-semibold text-zinc-100">heddle</h1>
+      <header className="flex items-center justify-between border-b border-hairline-strong px-6 py-3 bg-canvas">
+        <h1 className="text-lg font-semibold text-ink">heddle</h1>
         <div className="flex items-center gap-4">
           <ProjectSwitcher />
           <SandboxIndicator

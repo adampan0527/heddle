@@ -18,22 +18,38 @@
 import type { Edge, Node } from "reactflow";
 import type { Feature, FeatureStatus } from "@heddle/shared";
 
-/** Tailwind-friendly background color per feature status. */
+/**
+ * Status → hex color maps for DAG nodes.
+ *
+ * ReactFlow renders each node via inline `style={{ background, border,
+ * color }}` (see `FeatureNode.tsx`), so these values must be raw hex
+ * — CSS variables don't reach into inline styles reliably across all
+ * browsers. The hex values come from `packages/web/src/index.css`
+ * (`--color-status-*`) so they stay in sync with the rest of the
+ * design system; see VISUAL_DESIGN.md at the repo root.
+ *
+ * Status palette (cream theme):
+ *   pending    — warm gray tint, neutral default
+ *   in_progress — orange-50 tint (primary brand signal in motion)
+ *   blocked    — amber tint, dependency friction
+ *   deferred   — bone tint, paused
+ *   passing    — emerald tint, completion
+ */
 export const STATUS_COLOR: Record<FeatureStatus, string> = {
-  pending: "#3f3f46", // zinc-700
-  in_progress: "#1e3a8a", // blue-900
-  blocked: "#b45309", // amber-700
-  deferred: "#52525b", // zinc-600
-  passing: "#064e3b", // emerald-900
+  pending: "#e7e3d8",
+  in_progress: "#fff1eb",
+  blocked: "#fbe7d8",
+  deferred: "#ece9df",
+  passing: "#e1f0e8",
 };
 
 /** Border color per status; slightly brighter than the fill. */
 export const STATUS_BORDER: Record<FeatureStatus, string> = {
-  pending: "#71717a", // zinc-500
-  in_progress: "#60a5fa", // blue-400
-  blocked: "#fbbf24", // amber-400
-  deferred: "#71717a", // zinc-500
-  passing: "#34d399", // emerald-400
+  pending: "#a8a195",
+  in_progress: "#ea2804",
+  blocked: "#b45309",
+  deferred: "#a8a195",
+  passing: "#2b9a66",
 };
 
 /** Fixed node width / height so the layout math is deterministic. */

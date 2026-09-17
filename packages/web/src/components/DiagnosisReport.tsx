@@ -53,15 +53,15 @@ export function DiagnosisReport({
     <article
       aria-label="Diagnosis report"
       data-testid="diagnosis-report"
-      className="flex flex-col gap-3 rounded border border-purple-700 bg-purple-950/30 p-3 text-sm"
+      className="flex flex-col gap-3 rounded-md border border-purple-300 bg-surface-card p-3 text-sm"
     >
       <header className="flex items-baseline justify-between">
-        <h3 className="font-semibold text-purple-200" data-testid="diagnosis-title">
+        <h3 className="font-semibold text-purple-900" data-testid="diagnosis-title">
           Diagnosis
         </h3>
         {featureId ? (
           <span
-            className="font-mono text-xs text-purple-300/80"
+            className="font-code text-xs text-purple-700"
             data-testid="diagnosis-feature-id"
           >
             {featureId}
@@ -87,10 +87,10 @@ export function DiagnosisReport({
         <section
           aria-label="Proposed diff"
           data-testid="diagnosis-diff-section"
-          className="flex flex-col gap-2 rounded border border-purple-800 bg-zinc-950 p-2"
+          className="flex flex-col gap-2 rounded-md border border-hairline bg-canvas p-2"
         >
           <header className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-purple-300">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-purple-700">
               Proposed diff
             </h4>
             <button
@@ -98,7 +98,7 @@ export function DiagnosisReport({
               data-testid="diagnosis-apply"
               aria-label="Apply proposed diff"
               onClick={handleApply}
-              className="rounded border border-blue-600 bg-blue-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-blue-500"
+              className="rounded-full border border-primary bg-primary px-3 py-0.5 text-xs font-semibold text-on-primary hover:bg-primary-deep"
             >
               Apply
             </button>
@@ -125,8 +125,8 @@ function DiagnosisSection({
 }: DiagnosisSectionProps): React.ReactElement {
   const toneClasses =
     tone === "rose"
-      ? "border-rose-700 text-rose-200"
-      : "border-amber-700 text-amber-200";
+      ? "border-red-700 bg-red-50 text-red-900"
+      : "border-amber-700 bg-amber-50 text-amber-900";
   return (
     <section
       aria-label={label}
@@ -155,17 +155,17 @@ function DiffView({ diff }: DiffViewProps): React.ReactElement {
   return (
     <pre
       data-testid="diagnosis-diff"
-      className="overflow-x-auto rounded bg-black/40 p-2 font-mono text-xs leading-relaxed"
+      className="overflow-x-auto rounded bg-canvas p-2 font-code text-xs leading-relaxed"
     >
       {lines.map((line, idx) => {
         const trimmed = line;
         const first = trimmed.charAt(0);
         const cls =
           first === "-"
-            ? "text-rose-300"
+            ? "text-red-700"
             : first === "+"
-              ? "text-emerald-300"
-              : "text-zinc-400";
+              ? "text-badge-success"
+              : "text-charcoal";
         return (
           <span key={idx} className={`block ${cls}`}>
             {line}

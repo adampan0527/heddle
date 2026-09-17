@@ -9,7 +9,7 @@
  *      stable across dnd-kit / React upgrades.
  *
  *   2. Render tests that confirm:
- *      - bugfix cards carry `border-l-4 border-orange-500` AND a 🔧
+ *      - bugfix cards carry `border-l-4 border-primary` AND a 🔧
  *        glyph in the header's top-right region.
  *      - feature / enhancement cards have NO left-edge stripe.
  *      - blocked / deferred / passing cards render their status extras
@@ -92,9 +92,9 @@ describe("kindDisplay", () => {
 
   test("bugfix kind returns orange stripe + wrench icon", () => {
     const k = kindDisplay(makeFeature({ kind: "bugfix" }));
-    expect(k.leftBorder).toBe("border-l-4 border-orange-500");
+    expect(k.leftBorder).toBe("border-l-4 border-primary");
     expect(k.icon).toBe("\u{1F527}"); // 🔧
-    expect(k.accent).toBe("text-orange-400");
+    expect(k.accent).toBe("text-primary");
   });
 
   test("enhancement kind returns the default", () => {
@@ -217,7 +217,7 @@ describe("<KanbanCard /> render", () => {
     expect(card).not.toBeNull();
     expect(card!.tagName).toBe("LI");
     expect(card!.className).toContain("border-l-4");
-    expect(card!.className).toContain("border-orange-500");
+    expect(card!.className).toContain("border-primary");
     expect(card).toHaveAttribute("data-kind", "bugfix");
 
     const header = card!.querySelector("div");
@@ -239,7 +239,7 @@ describe("<KanbanCard /> render", () => {
       </ul>,
     );
     const card = screen.getByText("feat-FE").closest("[data-feature-id]");
-    expect(card!.className).not.toContain("border-orange-500");
+    expect(card!.className).not.toContain("border-primary");
     expect(card).toHaveAttribute("data-kind", "feature");
     // No wrench glyph anywhere on the card.
     expect(card!.querySelector("div")!.textContent).not.toContain("\u{1F527}");
@@ -258,7 +258,7 @@ describe("<KanbanCard /> render", () => {
       </ul>,
     );
     const card = screen.getByText("feat-EN").closest("[data-feature-id]");
-    expect(card!.className).not.toContain("border-orange-500");
+    expect(card!.className).not.toContain("border-primary");
     expect(card).toHaveAttribute("data-kind", "enhancement");
   });
 
@@ -354,7 +354,7 @@ describe("<KanbanCard /> render", () => {
     renderWithClient(<Kanban projectId="proj-1" />);
     const card = screen.getByText("feat-BF-PASS").closest("[data-feature-id]");
     expect(card).not.toBeNull();
-    expect(card!.className).toContain("border-orange-500");
+    expect(card!.className).toContain("border-primary");
     // Status extras still render (check + completed date).
     expect(card!.textContent).toContain("\u{2713}");
     expect(card!.textContent).toContain("completed 2026-09-09");
