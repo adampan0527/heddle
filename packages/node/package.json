@@ -5,7 +5,7 @@
   "type": "module",
   "license": "Apache-2.0",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "pnpm -F @heddle/shared build && tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "dev": "node --import tsx src/main.ts"

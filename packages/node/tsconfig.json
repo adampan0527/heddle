@@ -15,12 +15,8 @@
     "skipLibCheck": true,
     "outDir": "./dist",
     "sourceMap": true,
-    "declaration": false,
-    "baseUrl": ".",
-    "paths": {
-      "@heddle/shared": ["../shared/src/index.ts"]
-    }
+    "declaration": false
   },
-  "include": ["src/**/*", "../shared/src/**/*"],
-  "exclude": ["tests", "dist", "node_modules", "../shared/src/__pycache__"]
+  "include": ["src/**/*"],
+  "exclude": ["tests", "dist", "node_modules"]
 }
