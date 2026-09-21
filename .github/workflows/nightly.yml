@@ -34,19 +34,20 @@ jobs:
   live-llm-e2e:
     name: live-llm-e2e (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # Skip the matrix entirely when the gate is not satisfied, so
-    # the cron schedule still records a successful (skipped) run.
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.force || secrets.LIVE_LLM_TESTS == 'enabled' }}
+    # NB: GitHub Actions does NOT allow `secrets.*` references inside
+    # job-level `if`. We precompute the gate into the job's `env`
+    # (where secrets ARE allowed) and compare the boolean here.
+    env:
+      LIVE_LLM_GATE: ${{ secrets.LIVE_LLM_TESTS == 'enabled' }}
+      # Crucially NO HEDDLE_FAKE_LLM here — real provider calls.
+      LIVE_LLM_TESTS: "enabled"
+    if: ${{ env.LIVE_LLM_GATE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.force == 'true') }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.11"]
         node-version: ["20"]
-
-    env:
-      # Crucially NO HEDDLE_FAKE_LLM here — real provider calls.
-      LIVE_LLM_TESTS: "enabled"
 
     steps:
       - name: Checkout
@@ -107,9 +108,16 @@ jobs:
   gate-notice:
     name: gate-notice
     runs-on: ubuntu-latest
-    if: ${{ ! (github.event_name == 'workflow_dispatch' && inputs.force) && secrets.LIVE_LLM_TESTS != 'enabled' }}
+    # Same restriction as live-llm-e2e: `secrets.*` is NOT allowed
+    # inside job-level `if`. The `if` here only checks the dispatch
+    # condition (no secrets); the secrets check is deferred into a
+    # step-level `if` below where secrets ARE allowed.
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.force != 'true' }}
     steps:
-      - name: Notice
+      - name: Evaluate gate
+        id: gate
+        # `secrets` is allowed in step-level `if`.
+        if: ${{ secrets.LIVE_LLM_TESTS != 'enabled' }}
         run: |
           echo "LIVE_LLM_TESTS secret is not set; skipping nightly live-LLM run."
           echo "Set the repository secret LIVE_LLM_TESTS=enabled to enable."
