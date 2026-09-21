@@ -59,6 +59,9 @@ jobs:
         # `secrets.*` is allowed inside the step's `env:` mapping.
         env:
           LIVE_LLM_TESTS_SECRET: ${{ secrets.LIVE_LLM_TESTS }}
+        # Force bash on Windows runners — the default `pwsh` does
+        # not understand POSIX `[ "$x" = "y" ]` comparisons.
+        shell: bash
         run: |
           if [ "$LIVE_LLM_TESTS_SECRET" = "enabled" ]; then
             echo "LIVE_LLM_TESTS=secret is enabled; proceeding."
