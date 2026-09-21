@@ -47,29 +47,28 @@ jobs:
         python-version: ["3.11"]
         node-version: ["20"]
 
-    env:
-      # Crucially NO HEDDLE_FAKE_LLM here — real provider calls.
-      LIVE_LLM_TESTS: "enabled"
-
     steps:
       - name: Check LIVE_LLM_TESTS gate
         id: gate
-        # Step-level `if` DOES allow `secrets.*`. When the gate is
-        # closed (no secret, no forced dispatch) we emit a notice
-        # and return a no-op exit code so the cron schedule shows
-        # a successful skipped run. Forced runs bypass the gate.
+        # Step-level `if` evaluates the gate. Step is skipped when
+        # either: (a) the workflow was manually dispatched with
+        # force=true, or (b) the LIVE_LLM_TESTS secret is set to
+        # the value "enabled". In all other cases the step runs
+        # and emits `skip=true` so the remaining steps short-circuit.
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.force != 'true' }}
+        # `secrets.*` is allowed inside the step's `env:` mapping.
+        env:
+          LIVE_LLM_TESTS_SECRET: ${{ secrets.LIVE_LLM_TESTS }}
         run: |
-          if [ "$LIVE_LLM_TESTS" != "enabled" ] && [ "$SECRETS_LIVE_LLM_TESTS" != "enabled" ]; then
-            echo "::notice::LIVE_LLM_TESTS secret is not set; skipping nightly live-LLM run."
+          if [ "$LIVE_LLM_TESTS_SECRET" = "enabled" ]; then
+            echo "LIVE_LLM_TESTS=secret is enabled; proceeding."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::LIVE_LLM_TESTS secret is not set (value='$LIVE_LLM_TESTS_SECRET'); skipping nightly live-LLM run."
             echo "Set the repository secret LIVE_LLM_TESTS=enabled to enable."
             echo "Or trigger this workflow manually with 'force: true'."
             echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
-        env:
-          SECRETS_LIVE_LLM_TESTS: ${{ secrets.LIVE_LLM_TESTS }}
 
       - name: Checkout
         if: ${{ steps.gate.outputs.skip != 'true' }}
@@ -121,14 +120,21 @@ jobs:
 
       - name: Python tests (unittest, live LLM)
         if: ${{ steps.gate.outputs.skip != 'true' }}
+        # Crucially NO HEDDLE_FAKE_LLM here — real provider calls.
+        env:
+          LIVE_LLM_TESTS: "enabled"
         run: python -m unittest discover -s packages/common/heddle_common/tests -v
 
       - name: HARNESS tools tests (live LLM)
         if: ${{ steps.gate.outputs.skip != 'true' }}
+        env:
+          LIVE_LLM_TESTS: "enabled"
         run: python -m unittest discover -s HARNESS/tests -v
 
       - name: pnpm test
         if: ${{ steps.gate.outputs.skip != 'true' }}
+        env:
+          LIVE_LLM_TESTS: "enabled"
         run: |
           if [ -f packages/web/package.json ]; then
             cd packages/web
