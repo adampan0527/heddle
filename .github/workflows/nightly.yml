@@ -34,14 +34,12 @@ jobs:
   live-llm-e2e:
     name: live-llm-e2e (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # NB: GitHub Actions does NOT allow `secrets.*` references inside
-    # job-level `if`. We precompute the gate into the job's `env`
-    # (where secrets ARE allowed) and compare the boolean here.
-    env:
-      LIVE_LLM_GATE: ${{ secrets.LIVE_LLM_TESTS == 'enabled' }}
-      # Crucially NO HEDDLE_FAKE_LLM here — real provider calls.
-      LIVE_LLM_TESTS: "enabled"
-    if: ${{ env.LIVE_LLM_GATE == 'true' || (github.event_name == 'workflow_dispatch' && inputs.force == 'true') }}
+    # NB: GitHub Actions does NOT allow `secrets.*` or `env.*`
+    # references inside job-level `if`. We therefore do the gate
+    # check inside a leading setup step and bail out before any
+    # expensive setup. Every subsequent step repeats the same
+    # gate via step-level `if` so a forced-but-disabled run still
+    # short-circuits cleanly.
     strategy:
       fail-fast: false
       matrix:
@@ -49,16 +47,42 @@ jobs:
         python-version: ["3.11"]
         node-version: ["20"]
 
+    env:
+      # Crucially NO HEDDLE_FAKE_LLM here — real provider calls.
+      LIVE_LLM_TESTS: "enabled"
+
     steps:
+      - name: Check LIVE_LLM_TESTS gate
+        id: gate
+        # Step-level `if` DOES allow `secrets.*`. When the gate is
+        # closed (no secret, no forced dispatch) we emit a notice
+        # and return a no-op exit code so the cron schedule shows
+        # a successful skipped run. Forced runs bypass the gate.
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.force != 'true' }}
+        run: |
+          if [ "$LIVE_LLM_TESTS" != "enabled" ] && [ "$SECRETS_LIVE_LLM_TESTS" != "enabled" ]; then
+            echo "::notice::LIVE_LLM_TESTS secret is not set; skipping nightly live-LLM run."
+            echo "Set the repository secret LIVE_LLM_TESTS=enabled to enable."
+            echo "Or trigger this workflow manually with 'force: true'."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          SECRETS_LIVE_LLM_TESTS: ${{ secrets.LIVE_LLM_TESTS }}
+
       - name: Checkout
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         uses: actions/checkout@v4
 
       - name: Setup Node.js ${{ matrix.node-version }}
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
 
       - name: Setup Python ${{ matrix.python-version }}
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -69,11 +93,13 @@ jobs:
             packages/daemon/pyproject.toml
 
       - name: Install pnpm
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         uses: pnpm/action-setup@v4
         with:
           version: 9
 
       - name: Setup pnpm cache
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         uses: actions/cache@v4
         with:
           path: ~/.local/share/pnpm/store
@@ -82,21 +108,27 @@ jobs:
             ${{ runner.os }}-pnpm-${{ matrix.node-version }}-
 
       - name: pnpm install
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         run: pnpm install --frozen-lockfile
 
       - name: pip install (editable)
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         run: pip install -e .
 
       - name: pnpm --filter web build
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         run: pnpm --filter web build
 
       - name: Python tests (unittest, live LLM)
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         run: python -m unittest discover -s packages/common/heddle_common/tests -v
 
       - name: HARNESS tools tests (live LLM)
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         run: python -m unittest discover -s HARNESS/tests -v
 
       - name: pnpm test
+        if: ${{ steps.gate.outputs.skip != 'true' }}
         run: |
           if [ -f packages/web/package.json ]; then
             cd packages/web
@@ -104,21 +136,3 @@ jobs:
             cd ../..
           fi
         shell: bash
-
-  gate-notice:
-    name: gate-notice
-    runs-on: ubuntu-latest
-    # Same restriction as live-llm-e2e: `secrets.*` is NOT allowed
-    # inside job-level `if`. The `if` here only checks the dispatch
-    # condition (no secrets); the secrets check is deferred into a
-    # step-level `if` below where secrets ARE allowed.
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.force != 'true' }}
-    steps:
-      - name: Evaluate gate
-        id: gate
-        # `secrets` is allowed in step-level `if`.
-        if: ${{ secrets.LIVE_LLM_TESTS != 'enabled' }}
-        run: |
-          echo "LIVE_LLM_TESTS secret is not set; skipping nightly live-LLM run."
-          echo "Set the repository secret LIVE_LLM_TESTS=enabled to enable."
-          echo "Or trigger this workflow manually with 'force: true'."
